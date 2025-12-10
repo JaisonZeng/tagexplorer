@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@layer base {
+  html, body, #root {
+    min-height: 100vh;
+  }
+
+  body {
+    @apply bg-slate-100 text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-white;
+  }
+}

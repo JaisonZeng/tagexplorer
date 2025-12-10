@@ -1,0 +1,157 @@
+export namespace api {
+	
+	export class Tag {
+	    id: number;
+	    name: string;
+	    color: string;
+	    parent_id?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Tag(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.color = source["color"];
+	        this.parent_id = source["parent_id"];
+	    }
+	}
+	export class FileRecord {
+	    id: number;
+	    workspace_id: number;
+	    path: string;
+	    name: string;
+	    size: number;
+	    type: string;
+	    mod_time: string;
+	    created_at: string;
+	    hash: string;
+	    tags: Tag[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FileRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.workspace_id = source["workspace_id"];
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.size = source["size"];
+	        this.type = source["type"];
+	        this.mod_time = source["mod_time"];
+	        this.created_at = source["created_at"];
+	        this.hash = source["hash"];
+	        this.tags = this.convertValues(source["tags"], Tag);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class FilePage {
+	    total: number;
+	    records: FileRecord[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FilePage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.records = this.convertValues(source["records"], FileRecord);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class Workspace {
+	    id: number;
+	    path: string;
+	    name: string;
+	    created_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Workspace(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.created_at = source["created_at"];
+	    }
+	}
+	export class ScanResult {
+	    workspace: Workspace;
+	    file_count: number;
+	    directory_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScanResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.workspace = this.convertValues(source["workspace"], Workspace);
+	        this.file_count = source["file_count"];
+	        this.directory_count = source["directory_count"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+
+}
+
