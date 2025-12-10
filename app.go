@@ -103,27 +103,78 @@ func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
 
-// SelectWorkspace 让用户选择目录并触发扫描
-func (a *App) SelectWorkspace() (*api.ScanResult, error) {
+// UpdateTagColor 更新标签颜色
+func (a *App) UpdateTagColor(id int64, color string) error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+	if err := a.db.UpdateTagColor(a.ctx, id, color); err != nil {
+		if a.logger != nil {
+			a.logger.Error("更新标签颜色失败", zap.Int64("tag_id", id), zap.String("color", color), zap.Error(err))
+		}
+		return err
+	}
+	return nil
+}
+
+// AddWorkspaceFolder 添加文件夹到工作区
+func (a *App) AddWorkspaceFolder() (*api.ScanResult, error) {
 	if a.ctx == nil {
 		return nil, errors.New("应用尚未完成初始化")
 	}
 
 	selectedPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "选择工作区目录",
+		Title: "添加文件夹到工作区",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("打开目录选择对话框失败: %w", err)
 	}
 
 	if selectedPath == "" {
-		if a.logger != nil {
-			a.logger.Info("用户取消选择工作区")
-		}
-		a.currentWorkspace = nil
 		return nil, nil
 	}
 
+	return a.scanFolder(selectedPath)
+}
+
+// RemoveWorkspaceFolder 从工作区移除文件夹
+func (a *App) RemoveWorkspaceFolder(workspaceID int64) error {
+	// 这里只是从当前会话中移除，不删除数据库记录
+	// 因为用户可能还想保留历史数据
+	if a.currentWorkspace != nil && a.currentWorkspace.ID == workspaceID {
+		a.currentWorkspace = nil
+	}
+	return nil
+}
+
+// GetWorkspaceFolders 获取所有工作区文件夹
+func (a *App) GetWorkspaceFolders() ([]api.Workspace, error) {
+	if a.db == nil {
+		return nil, errors.New("数据库尚未准备就绪")
+	}
+	
+	workspaces, err := a.db.ListWorkspaces(a.ctx)
+	if err != nil {
+		return nil, err
+	}
+	
+	result := make([]api.Workspace, 0, len(workspaces))
+	for _, ws := range workspaces {
+		result = append(result, toAPIWorkspace(&ws))
+	}
+	return result, nil
+}
+
+// ScanWorkspaceFolder 扫描指定路径的文件夹
+func (a *App) ScanWorkspaceFolder(folderPath string) (*api.ScanResult, error) {
+	if folderPath == "" {
+		return nil, errors.New("文件夹路径不能为空")
+	}
+	return a.scanFolder(folderPath)
+}
+
+// scanFolder 内部方法：扫描文件夹
+func (a *App) scanFolder(selectedPath string) (*api.ScanResult, error) {
 	absPath, err := filepath.Abs(selectedPath)
 	if err != nil {
 		return nil, fmt.Errorf("解析工作区绝对路径失败: %w", err)
@@ -152,6 +203,13 @@ func (a *App) SelectWorkspace() (*api.ScanResult, error) {
 
 	a.currentWorkspace = ws
 
+	// 扫描完成后，处理文件名中的标签
+	if err := a.processFileNameTags(a.ctx, ws.ID); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("处理文件名标签失败", zap.Int64("workspace_id", ws.ID), zap.Error(err))
+		}
+	}
+
 	if a.logger != nil {
 		a.logger.Info(
 			"扫描工作区完成",
@@ -166,6 +224,30 @@ func (a *App) SelectWorkspace() (*api.ScanResult, error) {
 		FileCount:      result.FileCount,
 		DirectoryCount: result.DirectoryCount,
 	}, nil
+}
+
+// SelectWorkspace 让用户选择目录并触发扫描
+func (a *App) SelectWorkspace() (*api.ScanResult, error) {
+	if a.ctx == nil {
+		return nil, errors.New("应用尚未完成初始化")
+	}
+
+	selectedPath, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "选择工作区目录",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("打开目录选择对话框失败: %w", err)
+	}
+
+	if selectedPath == "" {
+		if a.logger != nil {
+			a.logger.Info("用户取消选择工作区")
+		}
+		a.currentWorkspace = nil
+		return nil, nil
+	}
+
+	return a.scanFolder(selectedPath)
 }
 
 // GetFiles 分页返回当前工作区文件列表
@@ -246,7 +328,7 @@ func (a *App) DeleteTag(id int64) error {
 	return nil
 }
 
-// AddTagToFile 为文件添加标签
+// AddTagToFile 为文件添加标签并重命名文件
 func (a *App) AddTagToFile(fileID, tagID int64) error {
 	if a.db == nil {
 		return errors.New("数据库尚未准备就绪")
@@ -257,10 +339,19 @@ func (a *App) AddTagToFile(fileID, tagID int64) error {
 		}
 		return err
 	}
+	
+	// 添加标签后重命名文件
+	if err := a.RenameFileWithTags(fileID); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("添加标签后重命名文件失败", zap.Int64("file_id", fileID), zap.Error(err))
+		}
+		// 重命名失败不影响标签添加的成功
+	}
+	
 	return nil
 }
 
-// RemoveTagFromFile 移除文件标签
+// RemoveTagFromFile 移除文件标签并重命名文件
 func (a *App) RemoveTagFromFile(fileID, tagID int64) error {
 	if a.db == nil {
 		return errors.New("数据库尚未准备就绪")
@@ -271,6 +362,165 @@ func (a *App) RemoveTagFromFile(fileID, tagID int64) error {
 		}
 		return err
 	}
+	
+	// 移除标签后重命名文件
+	if err := a.RenameFileWithTags(fileID); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("移除标签后重命名文件失败", zap.Int64("file_id", fileID), zap.Error(err))
+		}
+		// 重命名失败不影响标签移除的成功
+	}
+	
+	return nil
+}
+
+// parseTagsFromFileName 从文件名中解析标签
+func parseTagsFromFileName(fileName string) []string {
+	// 查找标签部分 [标签1, 标签2]
+	if idx := strings.LastIndex(fileName, " ["); idx != -1 {
+		ext := filepath.Ext(fileName)
+		nameWithoutExt := strings.TrimSuffix(fileName, ext)
+		
+		if endIdx := strings.LastIndex(nameWithoutExt, "]"); endIdx != -1 && endIdx > idx {
+			tagsPart := nameWithoutExt[idx+2 : endIdx] // 跳过 " ["
+			if tagsPart != "" {
+				// 分割标签并清理空白
+				rawTags := strings.Split(tagsPart, ",")
+				var tags []string
+				for _, tag := range rawTags {
+					cleaned := strings.TrimSpace(tag)
+					if cleaned != "" {
+						tags = append(tags, cleaned)
+					}
+				}
+				return tags
+			}
+		}
+	}
+	return nil
+}
+
+// getCleanFileName 获取不带标签的文件名
+func getCleanFileName(fileName string) string {
+	ext := filepath.Ext(fileName)
+	nameWithoutExt := strings.TrimSuffix(fileName, ext)
+	
+	// 移除标签部分
+	if idx := strings.LastIndex(nameWithoutExt, " ["); idx != -1 {
+		nameWithoutExt = nameWithoutExt[:idx]
+	}
+	
+	return nameWithoutExt + ext
+}
+
+// generateFileNameWithTags 生成带标签的文件名
+func generateFileNameWithTags(originalName string, tags []data.Tag) string {
+	// 分离文件名和扩展名
+	ext := filepath.Ext(originalName)
+	nameWithoutExt := strings.TrimSuffix(originalName, ext)
+	
+	// 移除现有的标签部分（如果存在）
+	if idx := strings.LastIndex(nameWithoutExt, " ["); idx != -1 {
+		nameWithoutExt = nameWithoutExt[:idx]
+	}
+	
+	// 如果没有标签，返回不带标签的文件名
+	if len(tags) == 0 {
+		return nameWithoutExt + ext
+	}
+	
+	// 构建标签字符串
+	tagNames := make([]string, len(tags))
+	for i, tag := range tags {
+		tagNames[i] = tag.Name
+	}
+	tagStr := strings.Join(tagNames, ", ")
+	
+	// 返回带标签的文件名
+	return fmt.Sprintf("%s [%s]%s", nameWithoutExt, tagStr, ext)
+}
+
+// RenameFileWithTags 根据标签重命名文件
+func (a *App) RenameFileWithTags(fileID int64) error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+	if a.currentWorkspace == nil {
+		return errors.New("尚未选择工作区")
+	}
+
+	// 获取文件信息（包含标签）
+	file, err := a.db.GetFileByID(a.ctx, fileID)
+	if err != nil {
+		return fmt.Errorf("获取文件信息失败: %w", err)
+	}
+
+	// 生成新的文件名
+	newName := generateFileNameWithTags(file.Name, file.Tags)
+	
+	// 如果文件名没有变化，直接返回
+	if newName == file.Name {
+		return nil
+	}
+
+	// 重命名文件
+	return a.RenameFile(fileID, newName)
+}
+
+// RenameFile 重命名文件并更新数据库
+func (a *App) RenameFile(fileID int64, newName string) error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+	if a.currentWorkspace == nil {
+		return errors.New("尚未选择工作区")
+	}
+	if newName == "" {
+		return errors.New("新文件名不能为空")
+	}
+
+	// 获取文件信息
+	file, err := a.db.GetFileByID(a.ctx, fileID)
+	if err != nil {
+		return fmt.Errorf("获取文件信息失败: %w", err)
+	}
+
+	// 构建完整路径
+	oldPath := filepath.Join(a.currentWorkspace.Path, file.Path)
+	newPath := filepath.Join(filepath.Dir(oldPath), newName)
+
+	// 检查新文件名是否已存在
+	if _, err := os.Stat(newPath); err == nil {
+		return errors.New("目标文件名已存在")
+	}
+
+	// 重命名文件
+	if err := os.Rename(oldPath, newPath); err != nil {
+		return fmt.Errorf("重命名文件失败: %w", err)
+	}
+
+	// 更新数据库中的文件信息
+	newRelPath, err := filepath.Rel(a.currentWorkspace.Path, newPath)
+	if err != nil {
+		// 如果更新数据库失败，尝试回滚文件重命名
+		_ = os.Rename(newPath, oldPath)
+		return fmt.Errorf("计算相对路径失败: %w", err)
+	}
+
+	if err := a.db.UpdateFileName(a.ctx, fileID, newName, newRelPath); err != nil {
+		// 如果更新数据库失败，尝试回滚文件重命名
+		_ = os.Rename(newPath, oldPath)
+		return fmt.Errorf("更新数据库失败: %w", err)
+	}
+
+	if a.logger != nil {
+		a.logger.Info("文件重命名成功", 
+			zap.Int64("file_id", fileID),
+			zap.String("old_name", file.Name),
+			zap.String("new_name", newName),
+		)
+	}
+
 	return nil
 }
 
@@ -459,4 +709,75 @@ func (a *App) generateVideoThumbnail(path string) (string, error) {
 func encodeDataURL(mime string, data []byte) string {
 	encoded := base64.StdEncoding.EncodeToString(data)
 	return fmt.Sprintf("data:%s;base64,%s", mime, encoded)
+}
+
+// processFileNameTags 处理工作区中所有文件名包含的标签
+func (a *App) processFileNameTags(ctx context.Context, workspaceID int64) error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+
+	// 获取工作区中的所有文件
+	const batchSize = 1000
+	offset := 0
+	
+	for {
+		page, err := a.db.ListFiles(ctx, workspaceID, batchSize, offset)
+		if err != nil {
+			return fmt.Errorf("获取文件列表失败: %w", err)
+		}
+		
+		if len(page.Records) == 0 {
+			break
+		}
+		
+		// 处理当前批次的文件
+		for _, file := range page.Records {
+			// 只处理普通文件，跳过目录
+			if file.Type != data.FileTypeRegular {
+				continue
+			}
+			
+			// 解析文件名中的标签
+			tags := parseTagsFromFileName(file.Name)
+			if len(tags) == 0 {
+				continue
+			}
+			
+			// 批量添加标签到文件
+			if err := a.db.BatchAddTagsToFile(ctx, file.ID, tags); err != nil {
+				if a.logger != nil {
+					a.logger.Warn("为文件添加标签失败", 
+						zap.Int64("file_id", file.ID),
+						zap.String("file_name", file.Name),
+						zap.Strings("tags", tags),
+						zap.Error(err),
+					)
+				}
+				// 继续处理其他文件，不因单个文件失败而中断
+				continue
+			}
+			
+			if a.logger != nil {
+				a.logger.Info("从文件名识别并添加标签", 
+					zap.Int64("file_id", file.ID),
+					zap.String("file_name", file.Name),
+					zap.Strings("tags", tags),
+				)
+			}
+		}
+		
+		// 如果返回的记录数少于批次大小，说明已经处理完所有文件
+		if len(page.Records) < batchSize {
+			break
+		}
+		
+		offset += batchSize
+	}
+	
+	if a.logger != nil {
+		a.logger.Info("完成文件名标签处理", zap.Int64("workspace_id", workspaceID))
+	}
+	
+	return nil
 }
