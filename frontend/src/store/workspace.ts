@@ -70,6 +70,7 @@ interface WorkspaceState {
   addTagToFilesLocal: (fileIds: number[], tag: TagInfo) => void;
   removeTagFromFilesLocal: (fileIds: number[], tagID: number) => void;
   updateTagColorLocal: (tagId: number, color: string) => void;
+  updateFileNameLocal: (fileId: number, newName: string) => void;
   // 工作区配置管理
   saveWorkspaceToFile: (name: string) => Promise<string | null>;
   loadWorkspaceFromFile: () => Promise<void>;
@@ -470,6 +471,23 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
               tag.id === tagId ? {...tag, color} : tag
             ),
           }));
+          return {...state, files};
+        }),
+
+      // 本地更新文件名
+      updateFileNameLocal: (fileId: number, newName: string) =>
+        set((state) => {
+          const files = state.files.map((file) => {
+            if (file.id !== fileId) return file;
+            // 更新文件名和路径
+            const pathParts = file.path.split("/");
+            pathParts[pathParts.length - 1] = newName;
+            return {
+              ...file,
+              name: newName,
+              path: pathParts.join("/"),
+            };
+          });
           return {...state, files};
         }),
 

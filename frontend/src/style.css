@@ -37,12 +37,12 @@
     transform-origin: 0 0 !important;
   }
 
-  /* 禁用所有元素的缩放 */
+  /* 禁用文字选中，让应用更像原生桌面应用 */
   * {
-    -webkit-user-select: text;
-    -moz-user-select: text;
-    -ms-user-select: text;
-    user-select: text;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
   }
 }
 
@@ -76,6 +76,13 @@
   padding: 8px 12px !important;
 }
 
+/* 工具栏内容 - 让按钮组紧凑排列 */
+.chonky-container .chonky-toolbarLeft,
+.chonky-container .chonky-toolbarRight {
+  flex-wrap: wrap !important;
+  gap: 4px !important;
+}
+
 /* 工具栏按钮 */
 .chonky-container .MuiButtonBase-root {
   font-family: inherit !important;
@@ -101,6 +108,21 @@
 /* 文件列表容器 */
 .chonky-container .chonky-fileListWrapper {
   background-color: transparent !important;
+}
+
+/* 让文件列表填满整个容器并居中 */
+.chonky-container .chonky-fileListWrapper {
+  display: flex !important;
+  justify-content: center !important;
+}
+
+.chonky-container .chonky-fileListWrapper > div {
+  width: 100% !important;
+}
+
+/* react-virtualized Grid 容器 - 让内容居中 */
+.chonky-container .ReactVirtualized__Grid__innerScrollContainer {
+  margin: 0 auto !important;
 }
 
 /* 网格视图文件卡片 */

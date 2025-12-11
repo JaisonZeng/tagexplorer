@@ -20,7 +20,8 @@ import {useTagStore} from "../store/tags";
 import {fileEntriesToChonky, getOriginalEntry, ExtendedFileData} from "../utils/chonkyAdapter";
 import {applyChonkyI18n} from "../utils/chonkyI18n";
 import type {FileEntry, TagInfo} from "../types/files";
-import {ChevronRight, Folder, Home, X, Filter, SearchX} from "lucide-react";
+import {ChevronRight, Folder, Home, X, Filter, SearchX, Pencil} from "lucide-react";
+import {RenameFile} from "../../wailsjs/go/main/App";
 
 // 应用中文本地化
 applyChonkyI18n();
@@ -46,6 +47,19 @@ const PreviewFileAction = defineFileAction({
     icon: ChonkyIconName.search,
   },
   hotkeys: ["space"],
+});
+
+// 自定义 Action: 重命名文件
+const RenameFileAction = defineFileAction({
+  id: "rename_file",
+  requiresSelection: true,
+  button: {
+    name: "重命名",
+    toolbar: false,
+    contextMenu: true,
+    icon: ChonkyIconName.terminal,
+  },
+  hotkeys: ["F2"],
 });
 
 interface FileBrowserProps {
@@ -165,6 +179,78 @@ const TagPopupMenu = ({
   );
 };
 
+// 重命名对话框组件
+interface RenameDialogProps {
+  isOpen: boolean;
+  fileName: string;
+  onClose: () => void;
+  onConfirm: (newName: string) => void;
+}
+
+const RenameDialog = ({isOpen, fileName, onClose, onConfirm}: RenameDialogProps) => {
+  const [newName, setNewName] = useState(fileName);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setNewName(fileName);
+      // 聚焦并选中文件名（不包括扩展名）
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          const dotIndex = fileName.lastIndexOf(".");
+          if (dotIndex > 0) {
+            inputRef.current.setSelectionRange(0, dotIndex);
+          } else {
+            inputRef.current.select();
+          }
+        }
+      }, 50);
+    }
+  }, [isOpen, fileName]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && newName.trim()) {
+      onConfirm(newName.trim());
+    } else if (e.key === "Escape") {
+      onClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50">
+      <div className="w-96 rounded-lg bg-white p-4 shadow-xl dark:bg-slate-900">
+        <h3 className="mb-3 text-sm font-medium text-slate-900 dark:text-white">重命名</h3>
+        <input
+          ref={inputRef}
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => newName.trim() && onConfirm(newName.trim())}
+            disabled={!newName.trim() || newName === fileName}
+            className="rounded bg-brand px-3 py-1.5 text-sm text-white hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            确定
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
@@ -176,14 +262,18 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
   const [filterTagIds, setFilterTagIds] = useState<number[]>([]);
   const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [showTagFilter, setShowTagFilter] = useState(false);
+  // 重命名状态
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<FileEntry | null>(null);
 
-  const {files, workspace, isTagSearchMode, searchByTags, clearTagSearch} = useWorkspaceStore(
+  const {files, workspace, isTagSearchMode, searchByTags, clearTagSearch, updateFileNameLocal} = useWorkspaceStore(
     useShallow((state) => ({
       files: state.files,
       workspace: state.workspace,
       isTagSearchMode: state.isTagSearchMode,
       searchByTags: state.searchByTags,
       clearTagSearch: state.clearTagSearch,
+      updateFileNameLocal: state.updateFileNameLocal,
     }))
   );
 
@@ -273,6 +363,7 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
       ChonkyActions.ClearSelection,
       TagFileAction,
       PreviewFileAction,
+      RenameFileAction,
     ],
     []
   );
@@ -323,6 +414,15 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
               y: rect ? rect.top + 100 : 200,
             });
             setTagMenuOpen(true);
+          }
+        }
+      } else if (id === "rename_file") {
+        const selectedFiles = state?.selectedFilesForAction;
+        if (selectedFiles && selectedFiles.length === 1) {
+          const entry = getOriginalEntry(selectedFiles[0]);
+          if (entry) {
+            setRenameTarget(entry);
+            setRenameDialogOpen(true);
           }
         }
       }
@@ -383,6 +483,20 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
     setFilterTagIds([]);
     clearTagSearch();
   }, [clearTagSearch]);
+
+  // 处理重命名确认
+  const handleRenameConfirm = useCallback(async (newName: string) => {
+    if (!renameTarget) return;
+    try {
+      await RenameFile(renameTarget.id, newName);
+      updateFileNameLocal(renameTarget.id, newName);
+      setRenameDialogOpen(false);
+      setRenameTarget(null);
+    } catch (error) {
+      console.error("重命名失败:", error);
+      alert("重命名失败: " + (error instanceof Error ? error.message : String(error)));
+    }
+  }, [renameTarget, updateFileNameLocal]);
 
   const FileBrowserComponent = ChonkyFileBrowser as any;
 
@@ -557,6 +671,17 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
           onRemoveTag={removeTagFromFiles}
         />
       )}
+
+      {/* 重命名对话框 */}
+      <RenameDialog
+        isOpen={renameDialogOpen}
+        fileName={renameTarget?.name || ""}
+        onClose={() => {
+          setRenameDialogOpen(false);
+          setRenameTarget(null);
+        }}
+        onConfirm={handleRenameConfirm}
+      />
 
       {/* 选中文件的标签信息面板 - 固定高度 */}
       {selectedFilesWithTags.length > 0 && (
