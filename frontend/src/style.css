@@ -16,3 +16,300 @@
     @apply bg-slate-100 text-slate-900 transition-colors duration-200 dark:bg-slate-950 dark:text-white;
   }
 }
+
+/* ========================================
+   Chonky 文件浏览器自定义样式
+   ======================================== */
+
+/* 根容器 */
+.chonky-container {
+  height: 100%;
+  font-family: inherit;
+}
+
+/* Chonky 根元素 */
+.chonky-container .chonky-chonkyRoot {
+  background-color: transparent !important;
+  border: none !important;
+  font-family: inherit !important;
+  font-size: 14px !important;
+}
+
+/* 隐藏导航栏（我们不需要面包屑导航） */
+.chonky-container .chonky-navbarWrapper {
+  display: none !important;
+}
+
+/* 工具栏样式 */
+.chonky-container .chonky-toolbarWrapper {
+  background-color: transparent !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  padding: 8px 12px !important;
+}
+
+/* 工具栏按钮 */
+.chonky-container .MuiButtonBase-root {
+  font-family: inherit !important;
+  font-size: 13px !important;
+  text-transform: none !important;
+  border-radius: 6px !important;
+}
+
+/* 搜索框 */
+.chonky-container .MuiInputBase-root {
+  font-family: inherit !important;
+  font-size: 13px !important;
+  background-color: #f1f5f9 !important;
+  border-radius: 6px !important;
+  padding: 4px 12px !important;
+}
+
+.chonky-container .MuiInputBase-root::before,
+.chonky-container .MuiInputBase-root::after {
+  display: none !important;
+}
+
+/* 文件列表容器 */
+.chonky-container .chonky-fileListWrapper {
+  background-color: transparent !important;
+}
+
+/* 网格视图文件卡片 */
+.chonky-container .chonky-gridFileEntry {
+  background-color: white !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  transition: all 0.15s ease !important;
+}
+
+.chonky-container .chonky-gridFileEntry:hover {
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 列表视图文件行 */
+.chonky-container .chonky-listFileEntry {
+  background-color: transparent !important;
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+.chonky-container .chonky-listFileEntry:hover {
+  background-color: #f8fafc !important;
+}
+
+/* 选中状态 */
+.chonky-container .chonky-fileEntrySelected {
+  background-color: rgba(20, 184, 166, 0.1) !important;
+  border-color: #14b8a6 !important;
+}
+
+.chonky-container .chonky-fileEntrySelected:hover {
+  background-color: rgba(20, 184, 166, 0.15) !important;
+}
+
+/* 文件名文字 */
+.chonky-container .chonky-fileNameText {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #1e293b !important;
+}
+
+/* 文件详情文字 */
+.chonky-container .chonky-fileEntryDescription {
+  font-size: 12px !important;
+  color: #64748b !important;
+}
+
+/* 右键菜单 */
+.chonky-container .MuiMenu-paper {
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.chonky-container .MuiMenuItem-root {
+  font-family: inherit !important;
+  font-size: 13px !important;
+  padding: 8px 16px !important;
+}
+
+/* ========================================
+   暗色模式样式
+   ======================================== */
+.dark .chonky-container .chonky-toolbarWrapper {
+  border-bottom-color: #334155 !important;
+}
+
+.dark .chonky-container .MuiInputBase-root {
+  background-color: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+.dark .chonky-container .MuiButtonBase-root {
+  color: #94a3b8 !important;
+}
+
+.dark .chonky-container .MuiButtonBase-root:hover {
+  background-color: #334155 !important;
+  color: #e2e8f0 !important;
+}
+
+.dark .chonky-container .chonky-gridFileEntry {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+
+.dark .chonky-container .chonky-gridFileEntry:hover {
+  border-color: #475569 !important;
+  background-color: #334155 !important;
+}
+
+.dark .chonky-container .chonky-listFileEntry {
+  border-bottom-color: #1e293b !important;
+}
+
+.dark .chonky-container .chonky-listFileEntry:hover {
+  background-color: #1e293b !important;
+}
+
+.dark .chonky-container .chonky-fileEntrySelected {
+  background-color: rgba(20, 184, 166, 0.2) !important;
+  border-color: #14b8a6 !important;
+}
+
+.dark .chonky-container .chonky-fileNameText {
+  color: #f1f5f9 !important;
+}
+
+.dark .chonky-container .chonky-fileEntryDescription {
+  color: #94a3b8 !important;
+}
+
+.dark .chonky-container .MuiMenu-paper {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+
+.dark .chonky-container .MuiMenuItem-root {
+  color: #e2e8f0 !important;
+}
+
+.dark .chonky-container .MuiMenuItem-root:hover {
+  background-color: #334155 !important;
+}
+
+/* 图标颜色 */
+.dark .chonky-container .chonky-icon {
+  color: #94a3b8 !important;
+}
+
+/* 文件夹图标 */
+.chonky-container .chonky-folderIcon {
+  color: #14b8a6 !important;
+}
+
+/* 隐藏选中状态的黑色图标 */
+.chonky-container .chonky-selectionIndicator {
+  display: none !important;
+}
+
+/* 隐藏文件条目左上角的选中指示器 */
+.chonky-container .chonky-gridFileEntry .chonky-selectionIndicator,
+.chonky-container .chonky-listFileEntry .chonky-selectionIndicator {
+  display: none !important;
+}
+
+/* 隐藏所有选中相关的图标 */
+.chonky-container .MuiSvgIcon-root[data-testid="CheckBoxIcon"],
+.chonky-container .MuiSvgIcon-root[data-testid="CheckBoxOutlineBlankIcon"] {
+  display: none !important;
+}
+
+/* react-photo-view 暗色模式 */
+.PhotoView-Portal {
+  z-index: 100 !important;
+}
+
+/* react-pdf 样式调整 */
+.react-pdf__Page {
+  margin: 0 auto;
+}
+
+.react-pdf__Page__canvas {
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto !important;
+}
+
+/* ========================================
+   标签侧边栏样式
+   ======================================== */
+
+/* 标签项悬停效果 */
+.tag-item {
+  @apply relative overflow-hidden;
+}
+
+.tag-item::before {
+  content: '';
+  @apply absolute inset-y-0 left-0 w-0.5 bg-brand opacity-0 transition-opacity;
+}
+
+.tag-item:hover::before,
+.tag-item.selected::before {
+  @apply opacity-100;
+}
+
+/* 颜色选择器动画 */
+.color-picker-enter {
+  @apply opacity-0 scale-95;
+}
+
+.color-picker-enter-active {
+  @apply opacity-100 scale-100 transition-all duration-150;
+}
+
+/* 工作区侧边栏文件夹项 */
+.folder-item {
+  @apply relative;
+}
+
+.folder-item::before {
+  content: '';
+  @apply absolute inset-y-0 left-0 w-0.5 bg-brand opacity-0 transition-opacity;
+}
+
+.folder-item.active::before {
+  @apply opacity-100;
+}
+
+/* 滚动条样式 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded-full dark:bg-slate-600;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-500;
+}
+
+/* 面包屑导航样式 */
+.breadcrumb-item {
+  @apply flex items-center gap-1 rounded px-2 py-1 text-sm transition;
+}
+
+.breadcrumb-item:hover {
+  @apply bg-slate-100 dark:bg-slate-800;
+}
+
+.breadcrumb-item.active {
+  @apply text-brand font-medium;
+}

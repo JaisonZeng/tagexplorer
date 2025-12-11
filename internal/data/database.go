@@ -596,3 +596,222 @@ func (s *FileImportSession) Close() error {
 	s.tx = nil
 	return nil
 }
+
+// GetFileByID 根据ID获取文件信息
+func (d *Database) GetFileByID(ctx context.Context, fileID int64) (*FileRecord, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	if fileID <= 0 {
+		return nil, errors.New("无效的文件 ID")
+	}
+
+	row := d.conn.QueryRowContext(
+		ctx,
+		`SELECT id, workspace_id, path, name, size, type, mod_time, created_at, hash
+		 FROM files WHERE id = ?`,
+		fileID,
+	)
+
+	var record FileRecord
+	if err := row.Scan(
+		&record.ID,
+		&record.WorkspaceID,
+		&record.Path,
+		&record.Name,
+		&record.Size,
+		&record.Type,
+		&record.ModTime,
+		&record.CreatedAt,
+		&record.Hash,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("文件不存在")
+		}
+		return nil, fmt.Errorf("查询文件失败: %w", err)
+	}
+
+	// 获取文件的标签
+	tagMap, err := d.getTagsForFiles(ctx, []int64{fileID})
+	if err != nil {
+		return nil, err
+	}
+	if tags, ok := tagMap[fileID]; ok {
+		record.Tags = tags
+	}
+
+	return &record, nil
+}
+
+// UpdateFileName 更新文件名和路径
+func (d *Database) UpdateFileName(ctx context.Context, fileID int64, newName, newPath string) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if fileID <= 0 {
+		return errors.New("无效的文件 ID")
+	}
+	if newName == "" {
+		return errors.New("新文件名不能为空")
+	}
+	if newPath == "" {
+		return errors.New("新路径不能为空")
+	}
+
+	result, err := d.conn.ExecContext(
+		ctx,
+		`UPDATE files SET name = ?, path = ? WHERE id = ?`,
+		newName, newPath, fileID,
+	)
+	if err != nil {
+		return fmt.Errorf("更新文件名失败: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return errors.New("文件不存在")
+	}
+
+	return nil
+}
+
+// GetOrCreateTagByName 根据名称获取或创建标签
+func (d *Database) GetOrCreateTagByName(ctx context.Context, name, defaultColor string) (*Tag, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, errors.New("标签名称不可为空")
+	}
+	if defaultColor == "" {
+		defaultColor = "#94a3b8"
+	}
+
+	// 先尝试查找现有标签
+	row := d.conn.QueryRowContext(ctx, `SELECT id, name, color, parent_id FROM tags WHERE name = ? COLLATE NOCASE`, name)
+	var tag Tag
+	err := row.Scan(&tag.ID, &tag.Name, &tag.Color, &tag.ParentID)
+	if err == nil {
+		return &tag, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("查询标签失败: %w", err)
+	}
+
+	// 标签不存在，创建新标签
+	return d.CreateTag(ctx, name, defaultColor, nil)
+}
+
+// UpdateTagColor 更新标签颜色
+func (d *Database) UpdateTagColor(ctx context.Context, id int64, color string) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if id <= 0 {
+		return errors.New("无效的标签 ID")
+	}
+	color = strings.TrimSpace(color)
+	if color == "" {
+		color = "#94a3b8"
+	}
+
+	result, err := d.conn.ExecContext(ctx, `UPDATE tags SET color = ? WHERE id = ?`, color, id)
+	if err != nil {
+		return fmt.Errorf("更新标签颜色失败: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return errors.New("标签不存在")
+	}
+	return nil
+}
+
+// ListWorkspaces 返回所有工作区
+func (d *Database) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+
+	rows, err := d.conn.QueryContext(ctx, `SELECT id, path, name, created_at FROM workspaces ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("查询工作区失败: %w", err)
+	}
+	defer rows.Close()
+
+	var workspaces []Workspace
+	for rows.Next() {
+		var ws Workspace
+		if err := rows.Scan(&ws.ID, &ws.Path, &ws.Name, &ws.CreatedAt); err != nil {
+			return nil, fmt.Errorf("读取工作区记录失败: %w", err)
+		}
+		workspaces = append(workspaces, ws)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历工作区记录失败: %w", err)
+	}
+
+	return workspaces, nil
+}
+
+// BatchAddTagsToFile 批量为文件添加标签（根据标签名称）
+func (d *Database) BatchAddTagsToFile(ctx context.Context, fileID int64, tagNames []string) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if fileID <= 0 {
+		return errors.New("无效的文件 ID")
+	}
+	if len(tagNames) == 0 {
+		return nil
+	}
+
+	tx, err := d.conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("开启事务失败: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	for _, tagName := range tagNames {
+		tagName = strings.TrimSpace(tagName)
+		if tagName == "" {
+			continue
+		}
+
+		// 获取或创建标签
+		var tagID int64
+		row := tx.QueryRowContext(ctx, `SELECT id FROM tags WHERE name = ? COLLATE NOCASE`, tagName)
+		err = row.Scan(&tagID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// 标签不存在，创建新标签
+			result, createErr := tx.ExecContext(ctx, `INSERT INTO tags(name, color) VALUES(?, ?)`, tagName, "#94a3b8")
+			if createErr != nil {
+				return fmt.Errorf("创建标签失败: %w", createErr)
+			}
+			tagID, createErr = result.LastInsertId()
+			if createErr != nil {
+				return fmt.Errorf("获取新标签 ID 失败: %w", createErr)
+			}
+		} else if err != nil {
+			return fmt.Errorf("查询标签失败: %w", err)
+		}
+
+		// 关联标签到文件
+		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO file_tags(file_id, tag_id) VALUES(?, ?)`, fileID, tagID)
+		if err != nil {
+			return fmt.Errorf("关联标签到文件失败: %w", err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("提交事务失败: %w", err)
+	}
+
+	return nil
+}

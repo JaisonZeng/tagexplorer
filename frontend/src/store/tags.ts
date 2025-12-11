@@ -5,6 +5,7 @@ import {
   DeleteTag,
   ListTags,
   RemoveTagFromFile,
+  UpdateTagColor,
 } from "../../wailsjs/go/main/App";
 import type {TagInfo} from "../types/files";
 import {useWorkspaceStore} from "./workspace";
@@ -17,6 +18,8 @@ interface TagState {
   fetchTags: () => Promise<void>;
   createTag: (name: string, color: string, parentId?: number | null) => Promise<void>;
   deleteTag: (tagId: number) => Promise<void>;
+  deleteTags: (tagIds: number[]) => Promise<void>;
+  updateTagColor: (tagId: number, color: string) => Promise<void>;
   addTagToFiles: (tagId: number, fileIds: number[]) => Promise<void>;
   removeTagFromFiles: (tagId: number, fileIds: number[]) => Promise<void>;
 }
@@ -82,6 +85,39 @@ export const useTagStore = create<TagState>((set, get) => ({
     }
   },
 
+  deleteTags: async (tagIds) => {
+    if (tagIds.length === 0) return;
+    try {
+      await Promise.all(tagIds.map((id) => DeleteTag(id)));
+      set((state) => ({
+        tags: state.tags.filter((tag) => !tagIds.includes(tag.id)),
+      }));
+      const fileIds = useWorkspaceStore.getState().files.map((file) => file.id);
+      tagIds.forEach((tagId) => {
+        useWorkspaceStore.getState().removeTagFromFilesLocal(fileIds, tagId);
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      set({error: message});
+    }
+  },
+
+  updateTagColor: async (tagId, color) => {
+    try {
+      await UpdateTagColor(tagId, color);
+      set((state) => ({
+        tags: state.tags.map((tag) =>
+          tag.id === tagId ? {...tag, color} : tag
+        ),
+      }));
+      // 更新文件中的标签颜色
+      useWorkspaceStore.getState().updateTagColorLocal(tagId, color);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      set({error: message});
+    }
+  },
+
   addTagToFiles: async (tagId, fileIds) => {
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
       return;
@@ -89,10 +125,9 @@ export const useTagStore = create<TagState>((set, get) => ({
     try {
       const uniqueIds = Array.from(new Set(fileIds));
       await Promise.all(uniqueIds.map((fileID) => AddTagToFile(fileID, tagId)));
-      const tag = get().tags.find((item) => item.id === tagId);
-      if (tag) {
-        useWorkspaceStore.getState().addTagToFilesLocal(uniqueIds, tag);
-      }
+      
+      // 由于后端会重命名文件，需要刷新文件列表以获取最新的文件名
+      await useWorkspaceStore.getState().fetchNextPage(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({error: message});
@@ -106,7 +141,9 @@ export const useTagStore = create<TagState>((set, get) => ({
     try {
       const uniqueIds = Array.from(new Set(fileIds));
       await Promise.all(uniqueIds.map((fileID) => RemoveTagFromFile(fileID, tagId)));
-      useWorkspaceStore.getState().removeTagFromFilesLocal(uniqueIds, tagId);
+      
+      // 由于后端会重命名文件，需要刷新文件列表以获取最新的文件名
+      await useWorkspaceStore.getState().fetchNextPage(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({error: message});

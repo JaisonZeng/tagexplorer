@@ -6,6 +6,10 @@ export function AddTagToFile(arg1, arg2) {
   return window['go']['main']['App']['AddTagToFile'](arg1, arg2);
 }
 
+export function AddWorkspaceFolder() {
+  return window['go']['main']['App']['AddWorkspaceFolder']();
+}
+
 export function CreateTag(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateTag'](arg1, arg2, arg3);
 }
@@ -22,6 +26,10 @@ export function GetThumbnail(arg1) {
   return window['go']['main']['App']['GetThumbnail'](arg1);
 }
 
+export function GetWorkspaceFolders() {
+  return window['go']['main']['App']['GetWorkspaceFolders']();
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
@@ -34,6 +42,26 @@ export function RemoveTagFromFile(arg1, arg2) {
   return window['go']['main']['App']['RemoveTagFromFile'](arg1, arg2);
 }
 
+export function RemoveWorkspaceFolder(arg1) {
+  return window['go']['main']['App']['RemoveWorkspaceFolder'](arg1);
+}
+
+export function RenameFile(arg1, arg2) {
+  return window['go']['main']['App']['RenameFile'](arg1, arg2);
+}
+
+export function RenameFileWithTags(arg1) {
+  return window['go']['main']['App']['RenameFileWithTags'](arg1);
+}
+
+export function ScanWorkspaceFolder(arg1) {
+  return window['go']['main']['App']['ScanWorkspaceFolder'](arg1);
+}
+
 export function SelectWorkspace() {
   return window['go']['main']['App']['SelectWorkspace']();
+}
+
+export function UpdateTagColor(arg1, arg2) {
+  return window['go']['main']['App']['UpdateTagColor'](arg1, arg2);
 }

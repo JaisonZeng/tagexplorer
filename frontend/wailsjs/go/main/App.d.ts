@@ -4,6 +4,8 @@ import {api} from '../models';
 
 export function AddTagToFile(arg1:number,arg2:number):Promise<void>;
 
+export function AddWorkspaceFolder():Promise<api.ScanResult>;
+
 export function CreateTag(arg1:string,arg2:string,arg3:any):Promise<api.Tag>;
 
 export function DeleteTag(arg1:number):Promise<void>;
@@ -12,10 +14,22 @@ export function GetFiles(arg1:number,arg2:number):Promise<api.FilePage>;
 
 export function GetThumbnail(arg1:string):Promise<string>;
 
+export function GetWorkspaceFolders():Promise<Array<api.Workspace>>;
+
 export function Greet(arg1:string):Promise<string>;
 
 export function ListTags():Promise<Array<api.Tag>>;
 
 export function RemoveTagFromFile(arg1:number,arg2:number):Promise<void>;
 
+export function RemoveWorkspaceFolder(arg1:number):Promise<void>;
+
+export function RenameFile(arg1:number,arg2:string):Promise<void>;
+
+export function RenameFileWithTags(arg1:number):Promise<void>;
+
+export function ScanWorkspaceFolder(arg1:string):Promise<api.ScanResult>;
+
 export function SelectWorkspace():Promise<api.ScanResult>;
+
+export function UpdateTagColor(arg1:number,arg2:string):Promise<void>;
