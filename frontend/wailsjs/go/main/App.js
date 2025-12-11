@@ -10,6 +10,10 @@ export function AddWorkspaceFolder() {
   return window['go']['main']['App']['AddWorkspaceFolder']();
 }
 
+export function ClearAllTagsFromFile(arg1) {
+  return window['go']['main']['App']['ClearAllTagsFromFile'](arg1);
+}
+
 export function CreateTag(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateTag'](arg1, arg2, arg3);
 }
@@ -18,8 +22,20 @@ export function DeleteTag(arg1) {
   return window['go']['main']['App']['DeleteTag'](arg1);
 }
 
+export function ExecuteOrganize(arg1) {
+  return window['go']['main']['App']['ExecuteOrganize'](arg1);
+}
+
 export function GetFiles(arg1, arg2) {
   return window['go']['main']['App']['GetFiles'](arg1, arg2);
+}
+
+export function GetRecentItems() {
+  return window['go']['main']['App']['GetRecentItems']();
+}
+
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
 }
 
 export function GetThumbnail(arg1) {
@@ -38,6 +54,22 @@ export function ListTags() {
   return window['go']['main']['App']['ListTags']();
 }
 
+export function LoadWorkspaceConfig() {
+  return window['go']['main']['App']['LoadWorkspaceConfig']();
+}
+
+export function OpenRecentItem(arg1, arg2) {
+  return window['go']['main']['App']['OpenRecentItem'](arg1, arg2);
+}
+
+export function PreviewOrganize(arg1) {
+  return window['go']['main']['App']['PreviewOrganize'](arg1);
+}
+
+export function RemoveRecentItem(arg1) {
+  return window['go']['main']['App']['RemoveRecentItem'](arg1);
+}
+
 export function RemoveTagFromFile(arg1, arg2) {
   return window['go']['main']['App']['RemoveTagFromFile'](arg1, arg2);
 }
@@ -54,14 +86,42 @@ export function RenameFileWithTags(arg1) {
   return window['go']['main']['App']['RenameFileWithTags'](arg1);
 }
 
+export function SaveWorkspaceConfig(arg1, arg2) {
+  return window['go']['main']['App']['SaveWorkspaceConfig'](arg1, arg2);
+}
+
 export function ScanWorkspaceFolder(arg1) {
   return window['go']['main']['App']['ScanWorkspaceFolder'](arg1);
+}
+
+export function SearchFilesByTags(arg1) {
+  return window['go']['main']['App']['SearchFilesByTags'](arg1);
 }
 
 export function SelectWorkspace() {
   return window['go']['main']['App']['SelectWorkspace']();
 }
 
+export function SetActiveWorkspace(arg1) {
+  return window['go']['main']['App']['SetActiveWorkspace'](arg1);
+}
+
+export function ShowStartupDialog() {
+  return window['go']['main']['App']['ShowStartupDialog']();
+}
+
+export function UndoOrganize(arg1) {
+  return window['go']['main']['App']['UndoOrganize'](arg1);
+}
+
+export function UpdateSettings(arg1) {
+  return window['go']['main']['App']['UpdateSettings'](arg1);
+}
+
 export function UpdateTagColor(arg1, arg2) {
   return window['go']['main']['App']['UpdateTagColor'](arg1, arg2);
+}
+
+export function UpdateWorkspaceConfig(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateWorkspaceConfig'](arg1, arg2, arg3);
 }

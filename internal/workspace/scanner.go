@@ -2,14 +2,11 @@ package workspace
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -38,6 +35,39 @@ func NewScanner(db *data.Database, logger *zap.Logger) *Scanner {
 	}
 }
 
+// 需要跳过的目录名（小写比较）
+var skipDirs = map[string]bool{
+	"node_modules":   true,
+	".git":           true,
+	".svn":           true,
+	".hg":            true,
+	"$recycle.bin":   true,
+	"system volume information": true,
+	".trash":         true,
+	".ds_store":      true,
+	"__pycache__":    true,
+	".venv":          true,
+	"venv":           true,
+	".idea":          true,
+	".vscode":        true,
+	"vendor":         true,
+	"dist":           true,
+	"build":          true,
+	".cache":         true,
+	".npm":           true,
+	".yarn":          true,
+}
+
+// shouldSkipDir 判断是否应该跳过该目录
+func shouldSkipDir(name string) bool {
+	lower := strings.ToLower(name)
+	// 跳过隐藏目录（以 $ 开头的 Windows 系统目录）
+	if strings.HasPrefix(name, "$") {
+		return true
+	}
+	return skipDirs[lower]
+}
+
 // Scan 递归扫描目录并写入数据库
 func (s *Scanner) Scan(ctx context.Context, workspace *data.Workspace) (*ScanResult, error) {
 	if workspace == nil {
@@ -52,31 +82,45 @@ func (s *Scanner) Scan(ctx context.Context, workspace *data.Workspace) (*ScanRes
 	}
 	defer session.Close()
 
-	const batchSize = 200
+	const batchSize = 500 // 增大批次大小
 	batch := make([]data.FileMetadata, 0, batchSize)
 	var files, dirs int
+	var skippedDirs int
 
 	walkErr := filepath.WalkDir(workspace.Path, func(path string, d fs.DirEntry, walkErr error) error {
+		// 权限错误等不应该中断整个扫描
 		if walkErr != nil {
-			s.logError("遍历目录失败", zap.String("path", path), zap.Error(walkErr), zap.Int64("workspace_id", workspace.ID))
-			return walkErr
+			s.logWarn("遍历目录时遇到错误，跳过", zap.String("path", path), zap.Error(walkErr))
+			return nil // 返回 nil 继续扫描
 		}
 
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			s.logError("扫描任务被取消", zap.Error(ctxErr), zap.Int64("workspace_id", workspace.ID))
-			return ctxErr
+		// 检查上下文是否被取消
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 
+		// 跳过特定目录
+		if d.IsDir() && shouldSkipDir(d.Name()) {
+			skippedDirs++
+			if s.logger != nil {
+				s.logger.Debug("跳过目录", zap.String("path", path))
+			}
+			return filepath.SkipDir
+		}
+
+		// 使用 DirEntry 的信息，避免额外的 stat 调用
 		info, err := d.Info()
 		if err != nil {
-			s.logError("获取文件信息失败", zap.String("path", path), zap.Error(err))
-			return fmt.Errorf("获取文件信息失败(%s): %w", path, err)
+			s.logWarn("获取文件信息失败，跳过", zap.String("path", path), zap.Error(err))
+			return nil // 跳过这个文件，继续扫描
 		}
 
 		relPath, err := filepath.Rel(workspace.Path, path)
 		if err != nil {
-			s.logError("计算相对路径失败", zap.String("path", path), zap.Error(err))
-			return fmt.Errorf("计算相对路径失败(%s): %w", path, err)
+			s.logWarn("计算相对路径失败，跳过", zap.String("path", path), zap.Error(err))
+			return nil
 		}
 		relPath = filepath.ToSlash(relPath)
 		if relPath == "." {
@@ -98,11 +142,9 @@ func (s *Scanner) Scan(ctx context.Context, workspace *data.Workspace) (*ScanRes
 			item.Size = 0
 			dirs++
 		} else {
-			hash, err := s.hashFile(path)
-			if err != nil {
-				return err
-			}
-			item.Hash = hash
+			// 不再计算哈希，使用 路径+大小+修改时间 作为文件标识
+			// 这是大多数文件管理器的做法，性能提升巨大
+			item.Hash = fmt.Sprintf("%s_%d_%d", relPath, info.Size(), info.ModTime().UnixNano())
 			files++
 		}
 
@@ -132,6 +174,10 @@ func (s *Scanner) Scan(ctx context.Context, workspace *data.Workspace) (*ScanRes
 		return nil, err
 	}
 
+	if s.logger != nil && skippedDirs > 0 {
+		s.logger.Info("扫描完成，跳过了部分目录", zap.Int("skipped_dirs", skippedDirs))
+	}
+
 	return &ScanResult{
 		Workspace:      *workspace,
 		FileCount:      files,
@@ -139,27 +185,16 @@ func (s *Scanner) Scan(ctx context.Context, workspace *data.Workspace) (*ScanRes
 	}, nil
 }
 
-// hashFile 生成文件的 SHA256 值
-func (s *Scanner) hashFile(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		s.logError("打开文件失败", zap.String("path", path), zap.Error(err))
-		return "", fmt.Errorf("打开文件失败(%s): %w", path, err)
-	}
-	defer file.Close()
-
-	hasher := sha256.New()
-	if _, err := io.Copy(hasher, file); err != nil {
-		s.logError("计算文件哈希失败", zap.String("path", path), zap.Error(err))
-		return "", fmt.Errorf("计算哈希失败(%s): %w", path, err)
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil)), nil
-}
-
 func (s *Scanner) logError(msg string, fields ...zap.Field) {
 	if s.logger == nil {
 		return
 	}
 	s.logger.Error(msg, fields...)
+}
+
+func (s *Scanner) logWarn(msg string, fields ...zap.Field) {
+	if s.logger == nil {
+		return
+	}
+	s.logger.Warn(msg, fields...)
 }

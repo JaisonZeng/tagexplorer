@@ -1,6 +1,6 @@
 import {useState} from "react";
 import {useShallow} from "zustand/react/shallow";
-import {useWorkspaceStore, WorkspaceFolder, WorkspaceConfig} from "../store/workspace";
+import {useWorkspaceStore, WorkspaceFolder} from "../store/workspace";
 import {
   Folder,
   FolderOpen,
@@ -8,152 +8,171 @@ import {
   X,
   Save,
   FolderInput,
-  Trash2,
   ChevronDown,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 
 const WorkspaceSidebar = () => {
   const {
     folders,
     activeFolderId,
-    savedConfigs,
     selecting,
+    workspaceSource,
     addFolder,
     removeFolder,
     setActiveFolder,
-    saveCurrentConfig,
-    loadConfig,
-    deleteConfig,
+    saveWorkspaceToFile,
+    loadWorkspaceFromFile,
+    getDisplayTitle,
+    isWorkspaceFileMode,
   } = useWorkspaceStore(
     useShallow((state) => ({
       folders: state.folders,
       activeFolderId: state.activeFolderId,
-      savedConfigs: state.savedConfigs,
       selecting: state.selecting,
+      workspaceSource: state.workspaceSource,
       addFolder: state.addFolder,
       removeFolder: state.removeFolder,
       setActiveFolder: state.setActiveFolder,
-      saveCurrentConfig: state.saveCurrentConfig,
-      loadConfig: state.loadConfig,
-      deleteConfig: state.deleteConfig,
+      saveWorkspaceToFile: state.saveWorkspaceToFile,
+      loadWorkspaceFromFile: state.loadWorkspaceFromFile,
+      getDisplayTitle: state.getDisplayTitle,
+      isWorkspaceFileMode: state.isWorkspaceFileMode,
     }))
   );
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [configName, setConfigName] = useState("");
-  const [showConfigs, setShowConfigs] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleSaveConfig = () => {
-    if (configName.trim()) {
-      saveCurrentConfig(configName.trim());
-      setConfigName("");
-      setShowSaveDialog(false);
+  const isWorkspaceFile = isWorkspaceFileMode();
+  const displayTitle = getDisplayTitle();
+
+  // 处理保存按钮点击
+  const handleSaveClick = async () => {
+    if (isWorkspaceFile) {
+      // 工作区文件模式：直接保存
+      setSaving(true);
+      try {
+        await saveWorkspaceToFile();
+      } catch (error) {
+        console.error("保存工作区配置失败:", error);
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // 文件夹模式：显示保存对话框
+      setShowSaveDialog(true);
     }
   };
 
-  const handleLoadConfig = async (config: WorkspaceConfig) => {
-    await loadConfig(config);
-    setShowConfigs(false);
+  // 处理新建保存
+  const handleSaveNewConfig = async () => {
+    if (configName.trim() && !saving) {
+      setSaving(true);
+      try {
+        const savedPath = await saveWorkspaceToFile(configName.trim());
+        if (savedPath) {
+          setConfigName("");
+          setShowSaveDialog(false);
+        }
+      } catch (error) {
+        console.error("保存工作区配置失败:", error);
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  const handleLoadConfig = async () => {
+    try {
+      await loadWorkspaceFromFile();
+    } catch (error) {
+      console.error("加载工作区配置失败:", error);
+    }
   };
 
   return (
     <aside className="flex w-48 flex-shrink-0 flex-col border-r border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50">
       {/* 标题栏 */}
-      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 dark:border-slate-800">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-          工作区
-        </span>
-        <div className="flex items-center gap-1">
-          {folders.length > 0 && (
+      <div className="flex flex-col border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between px-3 py-2">
+          <span
+            className="flex-1 truncate text-xs font-semibold text-slate-700 dark:text-slate-300"
+            title={displayTitle}
+          >
+            {isWorkspaceFile ? workspaceSource.name : "未保存工作区"}
+          </span>
+          <div className="flex items-center gap-1">
+            {folders.length > 0 && (
+              <button
+                onClick={handleSaveClick}
+                disabled={saving}
+                className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 disabled:opacity-50"
+                title={isWorkspaceFile ? "保存工作区" : "另存为工作区文件"}
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              </button>
+            )}
             <button
-              onClick={() => setShowSaveDialog(true)}
+              onClick={handleLoadConfig}
               className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700"
-              title="保存工作区配置"
-            >
-              <Save size={14} />
-            </button>
-          )}
-          {savedConfigs.length > 0 && (
-            <button
-              onClick={() => setShowConfigs(!showConfigs)}
-              className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700"
-              title="加载工作区配置"
+              title="打开工作区文件"
             >
               <FolderInput size={14} />
             </button>
-          )}
-          <button
-            onClick={() => addFolder()}
-            disabled={selecting}
-            className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 disabled:opacity-50"
-            title="添加文件夹"
-          >
-            <Plus size={14} />
-          </button>
+            <button
+              onClick={() => addFolder()}
+              disabled={selecting}
+              className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 disabled:opacity-50"
+              title="添加文件夹"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
         </div>
+        {/* 显示工作区文件路径或文件夹路径 */}
+        {displayTitle && (
+          <div className="px-3 pb-2">
+            <p className="truncate text-xs text-slate-400" title={displayTitle}>
+              {displayTitle}
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* 保存配置对话框 */}
+      {/* 保存配置表单（仅在文件夹模式下显示） */}
       {showSaveDialog && (
-        <div className="border-b border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
-          <p className="mb-2 text-xs text-slate-500">保存当前工作区配置</p>
-          <div className="flex gap-2">
+        <div className="border-b border-slate-200 p-2 dark:border-slate-800">
+          <div className="flex items-center gap-1.5">
             <input
               type="text"
               value={configName}
               onChange={(e) => setConfigName(e.target.value)}
-              placeholder="配置名称"
-              className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-700"
-              onKeyDown={(e) => e.key === "Enter" && handleSaveConfig()}
+              placeholder="工作区名称"
+              className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              onKeyDown={(e) => e.key === "Enter" && handleSaveNewConfig()}
               autoFocus
             />
             <button
-              onClick={handleSaveConfig}
-              disabled={!configName.trim()}
-              className="rounded bg-brand px-2 py-1 text-xs text-white hover:bg-brand-dark disabled:opacity-50"
+              onClick={handleSaveNewConfig}
+              disabled={!configName.trim() || saving}
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded bg-brand text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
+              title="保存 (Enter)"
             >
-              保存
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
             </button>
             <button
-              onClick={() => setShowSaveDialog(false)}
-              className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+              onClick={() => {
+                setShowSaveDialog(false);
+                setConfigName("");
+              }}
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700"
+              title="取消"
             >
-              取消
+              <X size={12} />
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* 已保存的配置列表 */}
-      {showConfigs && savedConfigs.length > 0 && (
-        <div className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-          <div className="p-2">
-            <p className="mb-2 text-xs text-slate-500">已保存的配置</p>
-            <div className="space-y-1">
-              {savedConfigs.map((config) => (
-                <div
-                  key={config.name}
-                  className="group flex items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-700"
-                >
-                  <button
-                    onClick={() => handleLoadConfig(config)}
-                    className="flex-1 text-left text-slate-700 dark:text-slate-300"
-                  >
-                    <span className="font-medium">{config.name}</span>
-                    <span className="ml-2 text-slate-400">
-                      ({config.folders.length} 个文件夹)
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => deleteConfig(config.name)}
-                    className="rounded p-1 text-slate-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       )}
@@ -179,7 +198,7 @@ const WorkspaceSidebar = () => {
                 key={folder.id}
                 folder={folder}
                 isActive={folder.id === activeFolderId}
-                onSelect={() => setActiveFolder(folder.id)}
+                onSelect={() => void setActiveFolder(folder.id)}
                 onRemove={() => removeFolder(folder.id)}
               />
             ))}
@@ -208,7 +227,7 @@ const FolderItem = ({folder, isActive, onSelect, onRemove}: FolderItemProps) => 
             ? "bg-brand/10 text-brand dark:bg-brand/20"
             : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
         }`}
-        onClick={onSelect}
+        onClick={() => void onSelect()}
       >
         <button
           onClick={(e) => {

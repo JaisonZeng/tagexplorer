@@ -1,7 +1,6 @@
 import {FormEvent, useEffect, useState, useRef} from "react";
 import {useShallow} from "zustand/react/shallow";
 import {useTagStore} from "../store/tags";
-import {useWorkspaceStore} from "../store/workspace";
 import {
   Tags,
   Plus,
@@ -9,15 +8,13 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  FolderOpen,
-  File,
-  Folder,
   Palette,
   Check,
   X,
   MoreHorizontal,
 } from "lucide-react";
 import type {TagInfo} from "../types/files";
+import useConfirm from "../hooks/useConfirm";
 
 const DEFAULT_COLOR = "#94a3b8";
 
@@ -131,6 +128,7 @@ interface TagItemProps {
   onSelect: (tagId: number, append: boolean) => void;
   onDelete: (tagId: number) => void;
   onUpdateColor: (tagId: number, color: string) => void;
+  onConfirmDelete: (tagId: number, tagName: string) => Promise<void>;
 }
 
 // 批量颜色选择按钮组件
@@ -167,7 +165,7 @@ const BatchColorPickerButton = ({show, onShow, onClose, onChange}: BatchColorPic
   );
 };
 
-const TagItem = ({tag, selected, onSelect, onDelete, onUpdateColor}: TagItemProps) => {
+const TagItem = ({tag, selected, onSelect, onDelete, onUpdateColor, onConfirmDelete}: TagItemProps) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -247,7 +245,7 @@ const TagItem = ({tag, selected, onSelect, onDelete, onUpdateColor}: TagItemProp
               onClick={(e) => {
                 e.stopPropagation();
                 setShowMenu(false);
-                onDelete(tag.id);
+                onConfirmDelete(tag.id, tag.name);
               }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
             >
@@ -271,6 +269,8 @@ const TagItem = ({tag, selected, onSelect, onDelete, onUpdateColor}: TagItemProp
 };
 
 const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
+  const { confirm, ConfirmComponent } = useConfirm();
+  
   const {
     tags,
     loading,
@@ -295,12 +295,7 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
     })),
   );
 
-  const {workspace, stats} = useWorkspaceStore(
-    useShallow((state) => ({
-      workspace: state.workspace,
-      stats: state.stats,
-    })),
-  );
+
 
   const [name, setName] = useState("");
   const [color, setColor] = useState(DEFAULT_COLOR);
@@ -336,7 +331,16 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
 
   const handleBatchDelete = async () => {
     if (selectedTagIds.length === 0) return;
-    if (confirm(`确定要删除选中的 ${selectedTagIds.length} 个标签吗？`)) {
+    
+    const confirmed = await confirm({
+      title: '删除标签',
+      message: `确定要删除选中的 ${selectedTagIds.length} 个标签吗？此操作不可撤销，同时会从所有文件中移除这些标签。`,
+      confirmText: '删除',
+      cancelText: '取消',
+      type: 'danger',
+    });
+    
+    if (confirmed) {
       await deleteTags(selectedTagIds);
       setSelectedTagIds([]);
     }
@@ -347,6 +351,20 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
       await updateTagColor(tagId, newColor);
     }
     setShowBatchColorPicker(false);
+  };
+
+  const handleSingleDelete = async (tagId: number, tagName: string) => {
+    const confirmed = await confirm({
+      title: '删除标签',
+      message: `确定要删除标签"${tagName}"吗？此操作不可撤销，同时会从所有文件中移除此标签。`,
+      confirmText: '删除',
+      cancelText: '取消',
+      type: 'danger',
+    });
+    
+    if (confirmed) {
+      await deleteTag(tagId);
+    }
   };
 
   const handleSelectAll = () => {
@@ -394,31 +412,6 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
           </button>
         </div>
       </div>
-
-      {workspace && (
-        <div className="border-b border-slate-200 p-4 dark:border-slate-800">
-          <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-            <FolderOpen size={14} />
-            <span className="truncate">{workspace.name}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-lg bg-slate-100 p-2 text-center dark:bg-slate-800">
-              <div className="flex items-center justify-center gap-1 text-lg font-bold text-slate-900 dark:text-white">
-                <File size={14} className="text-slate-400" />
-                {stats?.fileCount ?? 0}
-              </div>
-              <p className="text-xs text-slate-500">文件</p>
-            </div>
-            <div className="rounded-lg bg-slate-100 p-2 text-center dark:bg-slate-800">
-              <div className="flex items-center justify-center gap-1 text-lg font-bold text-slate-900 dark:text-white">
-                <Folder size={14} className="text-slate-400" />
-                {stats?.directoryCount ?? 0}
-              </div>
-              <p className="text-xs text-slate-500">文件夹</p>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="flex-1 overflow-y-auto p-3">
         {/* 新建标签表单 */}
@@ -527,11 +520,15 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
                 onSelect={handleSelectTag}
                 onDelete={deleteTag}
                 onUpdateColor={updateTagColor}
+                onConfirmDelete={handleSingleDelete}
               />
             ))
           )}
         </div>
       </div>
+      
+      {/* 确认对话框 */}
+      <ConfirmComponent />
     </aside>
   );
 };

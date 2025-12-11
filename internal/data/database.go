@@ -155,6 +155,19 @@ func (d *Database) InitDB(ctx context.Context) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_tags_parent ON tags(parent_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_operations_type ON operations(type);`,
+		`CREATE TABLE IF NOT EXISTS settings (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);`,
+		`CREATE TABLE IF NOT EXISTS recent_items (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL CHECK(type IN ('workspace', 'folder')),
+			path TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_recent_items_opened_at ON recent_items(opened_at DESC);`,
 	}
 
 	for _, stmt := range statements {
@@ -372,6 +385,26 @@ func (d *Database) RemoveTagFromFile(ctx context.Context, fileID, tagID int64) e
 	)
 	if err != nil {
 		return fmt.Errorf("从文件移除标签失败: %w", err)
+	}
+	return nil
+}
+
+// ClearAllTagsFromFile 清除文件的所有标签
+func (d *Database) ClearAllTagsFromFile(ctx context.Context, fileID int64) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if fileID <= 0 {
+		return errors.New("无效的文件 ID")
+	}
+
+	_, err := d.conn.ExecContext(
+		ctx,
+		`DELETE FROM file_tags WHERE file_id = ?`,
+		fileID,
+	)
+	if err != nil {
+		return fmt.Errorf("清除文件所有标签失败: %w", err)
 	}
 	return nil
 }
@@ -680,7 +713,7 @@ func (d *Database) GetOrCreateTagByName(ctx context.Context, name, defaultColor 
 	if d == nil || d.conn == nil {
 		return nil, errors.New("数据库对象尚未初始化")
 	}
-	
+
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, errors.New("标签名称不可为空")
@@ -756,6 +789,156 @@ func (d *Database) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 	return workspaces, nil
 }
 
+// GetWorkspaceByID 根据ID获取工作区信息
+func (d *Database) GetWorkspaceByID(ctx context.Context, workspaceID int64) (*Workspace, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	if workspaceID <= 0 {
+		return nil, errors.New("无效的工作区 ID")
+	}
+
+	row := d.conn.QueryRowContext(ctx, `SELECT id, path, name, created_at FROM workspaces WHERE id = ?`, workspaceID)
+	var ws Workspace
+	if err := row.Scan(&ws.ID, &ws.Path, &ws.Name, &ws.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("工作区不存在")
+		}
+		return nil, fmt.Errorf("查询工作区失败: %w", err)
+	}
+
+	return &ws, nil
+}
+
+// ListFilesByTags 根据标签ID和文件夹路径查询文件
+func (d *Database) ListFilesByTags(ctx context.Context, workspaceID int64, tagIDs []int64, folderPath string, includeSubfolders bool, limit, offset int) (*FilePage, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	if workspaceID <= 0 {
+		return nil, errors.New("缺少有效的工作区 ID")
+	}
+	if len(tagIDs) == 0 {
+		return nil, errors.New("至少需要一个标签ID")
+	}
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 2000 {
+		limit = 2000
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// 构建标签ID占位符
+	tagPlaceholders := make([]string, len(tagIDs))
+	tagArgs := make([]any, len(tagIDs))
+	for i, id := range tagIDs {
+		tagPlaceholders[i] = "?"
+		tagArgs[i] = id
+	}
+	tagIDsStr := strings.Join(tagPlaceholders, ",")
+
+	// 构建路径条件
+	var pathCondition string
+	var pathArgs []any
+	if folderPath != "" {
+		// 规范化路径分隔符
+		normalizedPath := strings.ReplaceAll(folderPath, "\\", "/")
+		if includeSubfolders {
+			// 包含子文件夹：路径以 folderPath 开头
+			pathCondition = " AND (f.path = ? OR f.path LIKE ?)"
+			pathArgs = []any{normalizedPath, normalizedPath + "/%"}
+		} else {
+			// 不包含子文件夹：只匹配直接子项
+			pathCondition = " AND (f.path LIKE ? AND f.path NOT LIKE ?)"
+			pathArgs = []any{normalizedPath + "/%", normalizedPath + "/%/%"}
+		}
+	}
+
+	// 构建基础查询条件：文件必须拥有所有指定的标签
+	baseCondition := fmt.Sprintf(`
+		f.workspace_id = ? 
+		AND f.type = 'file'
+		AND f.id IN (
+			SELECT file_id FROM file_tags 
+			WHERE tag_id IN (%s) 
+			GROUP BY file_id 
+			HAVING COUNT(DISTINCT tag_id) = ?
+		)%s`, tagIDsStr, pathCondition)
+
+	// 构建参数列表
+	countArgs := []any{workspaceID}
+	countArgs = append(countArgs, tagArgs...)
+	countArgs = append(countArgs, len(tagIDs))
+	countArgs = append(countArgs, pathArgs...)
+
+	// 统计总数
+	countQuery := fmt.Sprintf(`SELECT COUNT(1) FROM files f WHERE %s`, baseCondition)
+	var total int64
+	if err := d.conn.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("统计文件数量失败: %w", err)
+	}
+
+	// 查询文件列表
+	queryArgs := append(countArgs, limit, offset)
+	query := fmt.Sprintf(`
+		SELECT f.id, f.workspace_id, f.path, f.name, f.size, f.type, f.mod_time, f.created_at, f.hash
+		FROM files f
+		WHERE %s
+		ORDER BY f.path
+		LIMIT ? OFFSET ?`, baseCondition)
+
+	rows, err := d.conn.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("查询文件列表失败: %w", err)
+	}
+	defer rows.Close()
+
+	records := make([]FileRecord, 0, limit)
+	fileIDs := make([]int64, 0, limit)
+	for rows.Next() {
+		var record FileRecord
+		if err := rows.Scan(
+			&record.ID,
+			&record.WorkspaceID,
+			&record.Path,
+			&record.Name,
+			&record.Size,
+			&record.Type,
+			&record.ModTime,
+			&record.CreatedAt,
+			&record.Hash,
+		); err != nil {
+			return nil, fmt.Errorf("解析文件记录失败: %w", err)
+		}
+		records = append(records, record)
+		fileIDs = append(fileIDs, record.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历文件记录失败: %w", err)
+	}
+
+	// 获取文件的标签
+	if len(fileIDs) > 0 {
+		tagMap, err := d.getTagsForFiles(ctx, fileIDs)
+		if err != nil {
+			return nil, err
+		}
+		for i := range records {
+			if tags, ok := tagMap[records[i].ID]; ok {
+				records[i].Tags = tags
+			}
+		}
+	}
+
+	return &FilePage{
+		Total:   total,
+		Records: records,
+	}, nil
+}
+
 // BatchAddTagsToFile 批量为文件添加标签（根据标签名称）
 func (d *Database) BatchAddTagsToFile(ctx context.Context, fileID int64, tagNames []string) error {
 	if d == nil || d.conn == nil {
@@ -813,5 +996,200 @@ func (d *Database) BatchAddTagsToFile(ctx context.Context, fileID int64, tagName
 		return fmt.Errorf("提交事务失败: %w", err)
 	}
 
+	return nil
+}
+
+// GetSetting 获取设置值
+func (d *Database) GetSetting(ctx context.Context, key string) (string, error) {
+	if d == nil || d.conn == nil {
+		return "", errors.New("数据库对象尚未初始化")
+	}
+	if key == "" {
+		return "", errors.New("设置键不能为空")
+	}
+
+	var value string
+	err := d.conn.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, key).Scan(&value)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil // 设置不存在，返回空字符串
+		}
+		return "", fmt.Errorf("查询设置失败: %w", err)
+	}
+
+	return value, nil
+}
+
+// SetSetting 保存设置值
+func (d *Database) SetSetting(ctx context.Context, key, value string) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if key == "" {
+		return errors.New("设置键不能为空")
+	}
+
+	_, err := d.conn.ExecContext(ctx, `
+		INSERT INTO settings(key, value, updated_at) VALUES(?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+	`, key, value)
+	if err != nil {
+		return fmt.Errorf("保存设置失败: %w", err)
+	}
+
+	return nil
+}
+
+// RecentItem 表示最近打开的项目
+type RecentItem struct {
+	ID       int64     `json:"id"`
+	Type     string    `json:"type"` // "workspace" 或 "folder"
+	Path     string    `json:"path"`
+	Name     string    `json:"name"`
+	OpenedAt time.Time `json:"opened_at"`
+}
+
+// AddRecentItem 添加或更新最近打开的项目
+func (d *Database) AddRecentItem(ctx context.Context, itemType, path, name string) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if itemType != "workspace" && itemType != "folder" {
+		return errors.New("无效的项目类型")
+	}
+	if path == "" {
+		return errors.New("路径不能为空")
+	}
+	if name == "" {
+		name = filepath.Base(path)
+	}
+
+	_, err := d.conn.ExecContext(ctx, `
+		INSERT INTO recent_items(type, path, name, opened_at) VALUES(?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(path) DO UPDATE SET type = excluded.type, name = excluded.name, opened_at = CURRENT_TIMESTAMP
+	`, itemType, path, name)
+	if err != nil {
+		return fmt.Errorf("添加最近项目失败: %w", err)
+	}
+
+	return nil
+}
+
+// GetRecentItems 获取最近打开的项目列表
+func (d *Database) GetRecentItems(ctx context.Context, limit int) ([]RecentItem, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+
+	rows, err := d.conn.QueryContext(ctx, `
+		SELECT id, type, path, name, opened_at 
+		FROM recent_items 
+		ORDER BY opened_at DESC 
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("查询最近项目失败: %w", err)
+	}
+	defer rows.Close()
+
+	var items []RecentItem
+	for rows.Next() {
+		var item RecentItem
+		if err := rows.Scan(&item.ID, &item.Type, &item.Path, &item.Name, &item.OpenedAt); err != nil {
+			return nil, fmt.Errorf("读取最近项目记录失败: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历最近项目记录失败: %w", err)
+	}
+
+	return items, nil
+}
+
+// RemoveRecentItem 移除最近打开的项目
+func (d *Database) RemoveRecentItem(ctx context.Context, path string) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if path == "" {
+		return errors.New("路径不能为空")
+	}
+
+	_, err := d.conn.ExecContext(ctx, `DELETE FROM recent_items WHERE path = ?`, path)
+	if err != nil {
+		return fmt.Errorf("移除最近项目失败: %w", err)
+	}
+
+	return nil
+}
+
+// Operation 表示一条操作记录
+type Operation struct {
+	ID        int64     `json:"id"`
+	Type      string    `json:"type"`
+	Payload   string    `json:"payload"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// InsertOperation 写入操作记录
+func (d *Database) InsertOperation(ctx context.Context, opType, payload string) (int64, error) {
+	if d == nil || d.conn == nil {
+		return 0, errors.New("数据库对象尚未初始化")
+	}
+	if opType == "" {
+		return 0, errors.New("操作类型不能为空")
+	}
+	if payload == "" {
+		return 0, errors.New("操作内容不能为空")
+	}
+
+	result, err := d.conn.ExecContext(ctx, `INSERT INTO operations(type, payload) VALUES(?, ?)`, opType, payload)
+	if err != nil {
+		return 0, fmt.Errorf("写入操作记录失败: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("获取操作记录 ID 失败: %w", err)
+	}
+	return id, nil
+}
+
+// GetOperation 读取操作记录
+func (d *Database) GetOperation(ctx context.Context, id int64) (*Operation, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	if id <= 0 {
+		return nil, errors.New("无效的操作 ID")
+	}
+
+	row := d.conn.QueryRowContext(ctx, `SELECT id, type, payload, created_at FROM operations WHERE id = ?`, id)
+	var op Operation
+	if err := row.Scan(&op.ID, &op.Type, &op.Payload, &op.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("操作记录不存在")
+		}
+		return nil, fmt.Errorf("查询操作记录失败: %w", err)
+	}
+	return &op, nil
+}
+
+// DeleteOperation 删除操作记录
+func (d *Database) DeleteOperation(ctx context.Context, id int64) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if id <= 0 {
+		return errors.New("无效的操作 ID")
+	}
+
+	if _, err := d.conn.ExecContext(ctx, `DELETE FROM operations WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("删除操作记录失败: %w", err)
+	}
 	return nil
 }

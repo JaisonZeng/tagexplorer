@@ -6,6 +6,7 @@ import {
   Moon,
   Monitor,
   PanelLeft,
+  Sparkles,
 } from "lucide-react";
 import type {ThemePreference, ThemeValue} from "../hooks/useTheme";
 
@@ -16,6 +17,8 @@ interface MenuBarProps {
   onToggleTheme: () => void;
   onToggleWorkspaceSidebar?: () => void;
   workspaceSidebarVisible?: boolean;
+  onOpenSettings?: () => void;
+  onOpenOrganize?: () => void;
 }
 
 const themeIcons: Record<ThemePreference, typeof Sun> = {
@@ -31,6 +34,8 @@ const MenuBar = ({
   onToggleTheme,
   onToggleWorkspaceSidebar,
   workspaceSidebarVisible,
+  onOpenSettings,
+  onOpenOrganize,
 }: MenuBarProps) => {
   const ThemeIcon = themeIcons[preference];
 
@@ -65,6 +70,17 @@ const MenuBar = ({
       </div>
 
       <div className="flex items-center gap-1">
+        {onOpenOrganize && (
+          <button
+            onClick={onOpenOrganize}
+            className="flex items-center gap-2 rounded-md bg-brand/10 px-3 py-1.5 text-sm font-medium text-brand transition hover:bg-brand/20"
+            title="一键整理"
+          >
+            <Sparkles size={16} />
+            整理
+          </button>
+        )}
+
         <button
           onClick={onToggleTheme}
           className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -74,6 +90,7 @@ const MenuBar = ({
         </button>
 
         <button
+          onClick={onOpenSettings}
           className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
           title="设置"
         >
