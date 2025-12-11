@@ -22,6 +22,10 @@ export function GetFiles(arg1, arg2) {
   return window['go']['main']['App']['GetFiles'](arg1, arg2);
 }
 
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
+}
+
 export function GetThumbnail(arg1) {
   return window['go']['main']['App']['GetThumbnail'](arg1);
 }
@@ -76,6 +80,10 @@ export function SetActiveWorkspace(arg1) {
 
 export function ShowStartupDialog() {
   return window['go']['main']['App']['ShowStartupDialog']();
+}
+
+export function UpdateSettings(arg1) {
+  return window['go']['main']['App']['UpdateSettings'](arg1);
 }
 
 export function UpdateTagColor(arg1, arg2) {

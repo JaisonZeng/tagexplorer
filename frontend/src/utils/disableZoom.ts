@@ -68,7 +68,7 @@ export function disableZoom(): () => void {
  */
 export function resetZoom(): void {
   // 重置 CSS zoom 属性
-  document.body.style.zoom = '1';
+  (document.body.style as any).zoom = '1';
   
   // 重置 CSS transform scale
   document.body.style.transform = 'scale(1)';

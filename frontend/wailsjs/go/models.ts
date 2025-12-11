@@ -1,5 +1,90 @@
 export namespace api {
 	
+	export class CustomFormat {
+	    prefix: string;
+	    suffix: string;
+	    separator: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CustomFormat(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.prefix = source["prefix"];
+	        this.suffix = source["suffix"];
+	        this.separator = source["separator"];
+	    }
+	}
+	export class TagRuleConfig {
+	    format: string;
+	    customFormat?: CustomFormat;
+	    position: string;
+	    addSpaces: boolean;
+	    grouping: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TagRuleConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.format = source["format"];
+	        this.customFormat = this.convertValues(source["customFormat"], CustomFormat);
+	        this.position = source["position"];
+	        this.addSpaces = source["addSpaces"];
+	        this.grouping = source["grouping"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AppSettings {
+	    tagRule: TagRuleConfig;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tagRule = this.convertValues(source["tagRule"], TagRuleConfig);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class Tag {
 	    id: number;
 	    name: string;
@@ -151,6 +236,7 @@ export namespace api {
 		    return a;
 		}
 	}
+	
 	
 
 }

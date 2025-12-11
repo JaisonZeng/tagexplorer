@@ -16,6 +16,7 @@ interface MenuBarProps {
   onToggleTheme: () => void;
   onToggleWorkspaceSidebar?: () => void;
   workspaceSidebarVisible?: boolean;
+  onOpenSettings?: () => void;
 }
 
 const themeIcons: Record<ThemePreference, typeof Sun> = {
@@ -31,6 +32,7 @@ const MenuBar = ({
   onToggleTheme,
   onToggleWorkspaceSidebar,
   workspaceSidebarVisible,
+  onOpenSettings,
 }: MenuBarProps) => {
   const ThemeIcon = themeIcons[preference];
 
@@ -74,6 +76,7 @@ const MenuBar = ({
         </button>
 
         <button
+          onClick={onOpenSettings}
           className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
           title="设置"
         >

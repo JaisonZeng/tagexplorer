@@ -32,6 +32,7 @@ type App struct {
 
 	logCleanup       func()
 	currentWorkspace *data.Workspace
+	settings         *api.AppSettings
 }
 
 // NewApp 创建应用实例
@@ -80,6 +81,16 @@ func (a *App) startup(ctx context.Context) {
 
 	a.db = db
 	a.scanner = workspace.NewScanner(db, a.logger)
+	
+	// 初始化默认设置
+	a.settings = &api.AppSettings{
+		TagRule: api.TagRuleConfig{
+			Format:    "square_brackets",
+			Position:  "suffix",
+			AddSpaces: true,
+			Grouping:  "combined",
+		},
+	}
 }
 
 // shutdown 释放资源
@@ -102,6 +113,218 @@ func (a *App) shutdown(ctx context.Context) {
 // Greet 返回欢迎词（保留样例接口）
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
+}
+
+// GetSettings 获取应用设置
+func (a *App) GetSettings() (*api.AppSettings, error) {
+	if a.settings == nil {
+		return nil, errors.New("设置尚未初始化")
+	}
+	return a.settings, nil
+}
+
+// UpdateSettings 更新应用设置
+func (a *App) UpdateSettings(settings *api.AppSettings) error {
+	if settings == nil {
+		return errors.New("设置不能为空")
+	}
+	
+	// 验证设置
+	if err := a.validateSettings(settings); err != nil {
+		return fmt.Errorf("设置验证失败: %w", err)
+	}
+	
+	// 检查标签格式是否发生变化
+	formatChanged := a.settings == nil || 
+		a.settings.TagRule.Format != settings.TagRule.Format ||
+		a.settings.TagRule.Position != settings.TagRule.Position ||
+		a.settings.TagRule.AddSpaces != settings.TagRule.AddSpaces
+	
+	// 如果是自定义格式，还需要检查自定义格式设置
+	if settings.TagRule.Format == "custom" {
+		if a.settings == nil || a.settings.TagRule.CustomFormat == nil || settings.TagRule.CustomFormat == nil {
+			formatChanged = true
+		} else {
+			formatChanged = formatChanged ||
+				a.settings.TagRule.CustomFormat.Prefix != settings.TagRule.CustomFormat.Prefix ||
+				a.settings.TagRule.CustomFormat.Suffix != settings.TagRule.CustomFormat.Suffix ||
+				a.settings.TagRule.CustomFormat.Separator != settings.TagRule.CustomFormat.Separator
+		}
+	}
+	
+	a.settings = settings
+	
+	if a.logger != nil {
+		a.logger.Info("更新应用设置", 
+			zap.String("tag_format", settings.TagRule.Format),
+			zap.String("tag_position", settings.TagRule.Position),
+			zap.Bool("add_spaces", settings.TagRule.AddSpaces),
+			zap.Bool("format_changed", formatChanged),
+		)
+	}
+	
+	// 如果标签格式发生变化且有当前工作区，批量更新文件名
+	if formatChanged && a.currentWorkspace != nil {
+		go func() {
+			if err := a.batchUpdateFileNamesWithNewFormat(); err != nil {
+				if a.logger != nil {
+					a.logger.Error("批量更新文件名格式失败", zap.Error(err))
+				}
+			}
+		}()
+	}
+	
+	return nil
+}
+
+// batchUpdateFileNamesWithNewFormat 批量更新文件名以应用新的标签格式
+func (a *App) batchUpdateFileNamesWithNewFormat() error {
+	if a.db == nil || a.currentWorkspace == nil {
+		return errors.New("数据库或工作区尚未准备就绪")
+	}
+
+	if a.logger != nil {
+		a.logger.Info("开始批量更新文件名标签格式", 
+			zap.Int64("workspace_id", a.currentWorkspace.ID),
+		)
+	}
+
+	const batchSize = 100
+	offset := 0
+	updatedCount := 0
+	
+	for {
+		// 获取一批文件
+		page, err := a.db.ListFiles(a.ctx, a.currentWorkspace.ID, batchSize, offset)
+		if err != nil {
+			return fmt.Errorf("获取文件列表失败: %w", err)
+		}
+		
+		if len(page.Records) == 0 {
+			break
+		}
+		
+		// 处理当前批次的文件
+		for _, file := range page.Records {
+			// 只处理有标签的普通文件
+			if file.Type != data.FileTypeRegular || len(file.Tags) == 0 {
+				continue
+			}
+			
+			// 尝试重命名文件以应用新格式
+			if err := a.RenameFileWithTags(file.ID); err != nil {
+				if a.logger != nil {
+					a.logger.Warn("更新文件标签格式失败", 
+						zap.Int64("file_id", file.ID),
+						zap.String("file_name", file.Name),
+						zap.Error(err),
+					)
+				}
+				// 继续处理其他文件
+				continue
+			}
+			
+			updatedCount++
+		}
+		
+		// 如果返回的记录数少于批次大小，说明已经处理完所有文件
+		if len(page.Records) < batchSize {
+			break
+		}
+		
+		offset += batchSize
+	}
+	
+	if a.logger != nil {
+		a.logger.Info("完成批量更新文件名标签格式", 
+			zap.Int64("workspace_id", a.currentWorkspace.ID),
+			zap.Int("updated_count", updatedCount),
+		)
+	}
+	
+	return nil
+}
+
+// validateSettings 验证设置的有效性
+func (a *App) validateSettings(settings *api.AppSettings) error {
+	// 验证标签格式
+	validFormats := map[string]bool{
+		"brackets":        true,
+		"square_brackets": true,
+		"parentheses":     true,
+		"custom":          true,
+	}
+	
+	if !validFormats[settings.TagRule.Format] {
+		return errors.New("无效的标签格式")
+	}
+	
+	// 验证标签位置
+	validPositions := map[string]bool{
+		"prefix": true,
+		"suffix": true,
+	}
+	
+	if !validPositions[settings.TagRule.Position] {
+		return errors.New("无效的标签位置")
+	}
+	
+	// 验证标签组合方式
+	validGroupings := map[string]bool{
+		"combined":   true,
+		"individual": true,
+	}
+	
+	if !validGroupings[settings.TagRule.Grouping] {
+		return errors.New("无效的标签组合方式")
+	}
+	
+	// 如果是自定义格式，验证自定义格式设置
+	if settings.TagRule.Format == "custom" {
+		if settings.TagRule.CustomFormat == nil {
+			return errors.New("自定义格式时必须提供自定义格式设置")
+		}
+		
+		// 验证自定义格式字符是否包含文件名不允许的字符
+		customFormat := settings.TagRule.CustomFormat
+		if err := a.validateFileNameChars(customFormat.Prefix, "前缀"); err != nil {
+			return err
+		}
+		if err := a.validateFileNameChars(customFormat.Suffix, "后缀"); err != nil {
+			return err
+		}
+		if err := a.validateFileNameChars(customFormat.Separator, "分隔符"); err != nil {
+			return err
+		}
+	}
+	
+	return nil
+}
+
+// validateFileNameChars 验证字符串是否包含文件名不允许的字符
+func (a *App) validateFileNameChars(input, fieldName string) error {
+	if input == "" {
+		return nil
+	}
+	
+	// Windows 文件名不允许的字符
+	invalidChars := []string{"<", ">", ":", "\"", "|", "?", "*"}
+	
+	for _, char := range invalidChars {
+		if strings.Contains(input, char) {
+			if a.logger != nil {
+				a.logger.Warn("检测到文件名不允许的字符，将自动替换", 
+					zap.String("field", fieldName),
+					zap.String("input", input),
+					zap.String("invalid_char", char),
+				)
+			}
+			// 不返回错误，而是记录警告，让系统自动清理
+			break
+		}
+	}
+	
+	return nil
 }
 
 // UpdateTagColor 更新标签颜色
@@ -572,70 +795,496 @@ func (a *App) RemoveTagFromFile(fileID, tagID int64) error {
 	return nil
 }
 
-// parseTagsFromFileName 从文件名中解析标签
-func parseTagsFromFileName(fileName string) []string {
-	// 查找标签部分 [标签1, 标签2]
-	if idx := strings.LastIndex(fileName, " ["); idx != -1 {
-		ext := filepath.Ext(fileName)
-		nameWithoutExt := strings.TrimSuffix(fileName, ext)
+// parseTagsFromFileName 从文件名中解析标签，支持多种格式
+func (a *App) parseTagsFromFileName(fileName string) []string {
+	ext := filepath.Ext(fileName)
+	nameWithoutExt := strings.TrimSuffix(fileName, ext)
+	
+	// 定义所有可能的格式
+	formats := []struct {
+		name      string
+		prefix    string
+		suffix    string
+		separator string
+	}{
+		{"square_brackets", "[", "]", ", "},
+		{"brackets", "<", ">", ", "},
+		{"parentheses", "(", ")", ", "},
+	}
+	
+	// 如果有自定义格式，也加入检测
+	if a.settings.TagRule.Format == "custom" && a.settings.TagRule.CustomFormat != nil {
+		formats = append(formats, struct {
+			name      string
+			prefix    string
+			suffix    string
+			separator string
+		}{
+			"custom",
+			a.settings.TagRule.CustomFormat.Prefix,
+			a.settings.TagRule.CustomFormat.Suffix,
+			a.settings.TagRule.CustomFormat.Separator,
+		})
+	}
+	
+	// 尝试所有格式和位置组合
+	for _, format := range formats {
+		if format.prefix == "" || format.suffix == "" {
+			continue
+		}
 		
-		if endIdx := strings.LastIndex(nameWithoutExt, "]"); endIdx != -1 && endIdx > idx {
-			tagsPart := nameWithoutExt[idx+2 : endIdx] // 跳过 " ["
-			if tagsPart != "" {
-				// 分割标签并清理空白
-				rawTags := strings.Split(tagsPart, ",")
-				var tags []string
-				for _, tag := range rawTags {
-					cleaned := strings.TrimSpace(tag)
-					if cleaned != "" {
-						tags = append(tags, cleaned)
+		// 首先尝试识别分别显示的标签（如 [标签1][标签2]）
+		if tags := a.parseIndividualTags(nameWithoutExt, format); len(tags) > 0 {
+			if a.logger != nil {
+				a.logger.Info("识别到分别显示的文件名标签", 
+					zap.String("file_name", fileName),
+					zap.String("format", format.name),
+					zap.Strings("tags", tags),
+				)
+			}
+			return tags
+		}
+		
+		// 然后尝试组合显示的标签（如 [标签1, 标签2]）
+		// 尝试后缀位置 (默认)
+		if strings.HasSuffix(nameWithoutExt, format.suffix) {
+			if idx := strings.LastIndex(nameWithoutExt, format.prefix); idx != -1 {
+				tagsPart := nameWithoutExt[idx+len(format.prefix) : len(nameWithoutExt)-len(format.suffix)]
+				if tagsPart != "" {
+					tags := a.splitTags(tagsPart, format.separator)
+					if len(tags) > 0 {
+						if a.logger != nil {
+							a.logger.Info("识别到组合显示的文件名标签", 
+								zap.String("file_name", fileName),
+								zap.String("format", format.name),
+								zap.String("position", "suffix"),
+								zap.Strings("tags", tags),
+							)
+						}
+						return tags
 					}
 				}
-				return tags
+			}
+		}
+		
+		// 尝试前缀位置
+		if strings.HasPrefix(nameWithoutExt, format.prefix) {
+			if idx := strings.Index(nameWithoutExt, format.suffix); idx != -1 {
+				tagsPart := nameWithoutExt[len(format.prefix):idx]
+				if tagsPart != "" {
+					tags := a.splitTags(tagsPart, format.separator)
+					if len(tags) > 0 {
+						if a.logger != nil {
+							a.logger.Info("识别到组合显示的文件名标签", 
+								zap.String("file_name", fileName),
+								zap.String("format", format.name),
+								zap.String("position", "prefix"),
+								zap.Strings("tags", tags),
+							)
+						}
+						return tags
+					}
+				}
 			}
 		}
 	}
+	
 	return nil
 }
 
+// parseIndividualTags 解析分别显示的标签（如 [标签1][标签2]）
+func (a *App) parseIndividualTags(nameWithoutExt string, format struct {
+	name      string
+	prefix    string
+	suffix    string
+	separator string
+}) []string {
+	var tags []string
+	remaining := nameWithoutExt
+	
+	// 根据当前设置的位置来解析
+	if a.settings.TagRule.Position == "prefix" {
+		// 从前面开始解析
+		for strings.HasPrefix(remaining, format.prefix) {
+			endIdx := strings.Index(remaining, format.suffix)
+			if endIdx == -1 {
+				break
+			}
+			
+			tagName := remaining[len(format.prefix):endIdx]
+			if tagName != "" {
+				tags = append(tags, strings.TrimSpace(tagName))
+			}
+			
+			remaining = remaining[endIdx+len(format.suffix):]
+			// 跳过可能的空格
+			remaining = strings.TrimLeft(remaining, " ")
+		}
+	} else {
+		// 从后面开始解析
+		for strings.HasSuffix(remaining, format.suffix) {
+			startIdx := strings.LastIndex(remaining, format.prefix)
+			if startIdx == -1 {
+				break
+			}
+			
+			tagName := remaining[startIdx+len(format.prefix) : len(remaining)-len(format.suffix)]
+			if tagName != "" {
+				// 因为是从后往前解析，所以要插入到前面
+				tags = append([]string{strings.TrimSpace(tagName)}, tags...)
+			}
+			
+			remaining = remaining[:startIdx]
+			// 跳过可能的空格
+			remaining = strings.TrimRight(remaining, " ")
+		}
+	}
+	
+	return tags
+}
+
+// splitTags 分割标签字符串
+func (a *App) splitTags(tagsPart, separator string) []string {
+	rawTags := strings.Split(tagsPart, separator)
+	var tags []string
+	for _, tag := range rawTags {
+		cleaned := strings.TrimSpace(tag)
+		if cleaned != "" {
+			tags = append(tags, cleaned)
+		}
+	}
+	return tags
+}
+
 // getCleanFileName 获取不带标签的文件名
-func getCleanFileName(fileName string) string {
+func (a *App) getCleanFileName(fileName string) string {
 	ext := filepath.Ext(fileName)
 	nameWithoutExt := strings.TrimSuffix(fileName, ext)
 	
 	// 移除标签部分
-	if idx := strings.LastIndex(nameWithoutExt, " ["); idx != -1 {
-		nameWithoutExt = nameWithoutExt[:idx]
-	}
+	nameWithoutExt = a.removeTagsFromFileName(nameWithoutExt)
 	
 	return nameWithoutExt + ext
 }
 
 // generateFileNameWithTags 生成带标签的文件名
-func generateFileNameWithTags(originalName string, tags []data.Tag) string {
+func (a *App) generateFileNameWithTags(originalName string, tags []data.Tag) string {
 	// 分离文件名和扩展名
 	ext := filepath.Ext(originalName)
 	nameWithoutExt := strings.TrimSuffix(originalName, ext)
 	
-	// 移除现有的标签部分（如果存在）
-	if idx := strings.LastIndex(nameWithoutExt, " ["); idx != -1 {
-		nameWithoutExt = nameWithoutExt[:idx]
+	if a.logger != nil {
+		a.logger.Debug("开始生成带标签的文件名", 
+			zap.String("original_name", originalName),
+			zap.Int("tag_count", len(tags)),
+		)
+	}
+	
+	// 完全移除现有的标签部分
+	cleanName := a.removeTagsFromFileName(nameWithoutExt)
+	
+	if a.logger != nil {
+		a.logger.Debug("清理后的文件名", 
+			zap.String("original", nameWithoutExt),
+			zap.String("cleaned", cleanName),
+		)
 	}
 	
 	// 如果没有标签，返回不带标签的文件名
 	if len(tags) == 0 {
-		return nameWithoutExt + ext
+		return cleanName + ext
 	}
 	
-	// 构建标签字符串
+	// 根据设置生成标签字符串
+	tagStr := a.formatTagsText(tags)
+	if tagStr == "" {
+		return cleanName + ext
+	}
+	
+	// 根据设置应用标签到文件名
+	space := ""
+	if a.settings.TagRule.AddSpaces {
+		space = " "
+	}
+	
+	var result string
+	if a.settings.TagRule.Position == "prefix" {
+		result = tagStr + space + cleanName
+	} else {
+		result = cleanName + space + tagStr
+	}
+	
+	finalName := result + ext
+	
+	if a.logger != nil {
+		a.logger.Debug("生成的最终文件名", 
+			zap.String("final_name", finalName),
+			zap.String("tag_str", tagStr),
+		)
+	}
+	
+	return finalName
+}
+
+// formatTagsText 根据设置格式化标签文本
+func (a *App) formatTagsText(tags []data.Tag) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	
+	config := a.settings.TagRule
+	
+	// 获取格式设置
+	var prefix, suffix, separator string
+	
+	switch config.Format {
+	case "brackets":
+		prefix, suffix, separator = "<", ">", ", "
+	case "square_brackets":
+		prefix, suffix, separator = "[", "]", ", "
+	case "parentheses":
+		prefix, suffix, separator = "(", ")", ", "
+	case "custom":
+		if config.CustomFormat != nil {
+			prefix = a.sanitizeFileNamePart(config.CustomFormat.Prefix)
+			suffix = a.sanitizeFileNamePart(config.CustomFormat.Suffix)
+			separator = a.sanitizeFileNamePart(config.CustomFormat.Separator)
+		} else {
+			prefix, suffix, separator = "[", "]", ", "
+		}
+	default:
+		prefix, suffix, separator = "[", "]", ", "
+	}
+	
+	// 清理标签名称
 	tagNames := make([]string, len(tags))
 	for i, tag := range tags {
-		tagNames[i] = tag.Name
+		tagNames[i] = a.sanitizeFileNamePart(tag.Name)
 	}
-	tagStr := strings.Join(tagNames, ", ")
 	
-	// 返回带标签的文件名
-	return fmt.Sprintf("%s [%s]%s", nameWithoutExt, tagStr, ext)
+	var result string
+	
+	// 根据组合方式构建标签字符串
+	if config.Grouping == "individual" {
+		// 分别显示：每个标签都有独立的括号
+		var parts []string
+		for _, tagName := range tagNames {
+			part := prefix + tagName + suffix
+			parts = append(parts, part)
+		}
+		result = strings.Join(parts, "")
+	} else {
+		// 组合显示：所有标签放在一个括号内
+		tagStr := strings.Join(tagNames, separator)
+		result = prefix + tagStr + suffix
+	}
+	
+	// 最终清理整个标签字符串
+	result = a.sanitizeFileNamePart(result)
+	
+	if a.logger != nil {
+		a.logger.Debug("格式化标签文本", 
+			zap.String("format", config.Format),
+			zap.String("grouping", config.Grouping),
+			zap.String("result", result),
+		)
+	}
+	
+	return result
+}
+
+// sanitizeFileNamePart 清理文件名部分，移除或替换不允许的字符
+func (a *App) sanitizeFileNamePart(input string) string {
+	if input == "" {
+		return input
+	}
+	
+	// Windows 文件名不允许的字符
+	invalidChars := []string{
+		"<", ">", ":", "\"", "|", "?", "*",
+		// 控制字符 (ASCII 0-31)
+	}
+	
+	result := input
+	
+	// 替换不允许的字符
+	for _, char := range invalidChars {
+		switch char {
+		case "|":
+			result = strings.ReplaceAll(result, char, "丨") // 使用相似的Unicode字符
+		case "<":
+			result = strings.ReplaceAll(result, char, "＜") // 使用全角字符
+		case ">":
+			result = strings.ReplaceAll(result, char, "＞") // 使用全角字符
+		case ":":
+			result = strings.ReplaceAll(result, char, "：") // 使用全角字符
+		case "\"":
+			result = strings.ReplaceAll(result, char, "'") // 使用单引号
+		case "?":
+			result = strings.ReplaceAll(result, char, "？") // 使用全角字符
+		case "*":
+			result = strings.ReplaceAll(result, char, "＊") // 使用全角字符
+		default:
+			result = strings.ReplaceAll(result, char, "_")
+		}
+	}
+	
+	// 移除控制字符 (ASCII 0-31)
+	var cleaned strings.Builder
+	for _, r := range result {
+		if r >= 32 || r == '\t' { // 保留制表符，移除其他控制字符
+			cleaned.WriteRune(r)
+		}
+	}
+	result = cleaned.String()
+	
+	// 移除开头和结尾的空格和点号（Windows 不允许）
+	result = strings.Trim(result, " .")
+	
+	// 如果结果为空，返回默认值
+	if result == "" {
+		return "_"
+	}
+	
+	return result
+}
+
+// removeTagsFromFileName 从文件名中移除标签部分，支持多种格式
+func (a *App) removeTagsFromFileName(nameWithoutExt string) string {
+	// 定义所有可能的格式
+	formats := []struct {
+		name   string
+		prefix string
+		suffix string
+	}{
+		{"square_brackets", "[", "]"},
+		{"brackets", "<", ">"},
+		{"parentheses", "(", ")"},
+	}
+	
+	// 如果有自定义格式，也加入检测
+	if a.settings.TagRule.Format == "custom" && a.settings.TagRule.CustomFormat != nil {
+		formats = append(formats, struct {
+			name   string
+			prefix string
+			suffix string
+		}{
+			"custom",
+			a.settings.TagRule.CustomFormat.Prefix,
+			a.settings.TagRule.CustomFormat.Suffix,
+		})
+	}
+	
+	result := nameWithoutExt
+	originalResult := result
+	
+	// 循环移除所有标签，直到没有更多标签可移除
+	maxIterations := 20 // 防止无限循环
+	for iteration := 0; iteration < maxIterations; iteration++ {
+		previousResult := result
+		
+		for _, format := range formats {
+			if format.prefix == "" || format.suffix == "" {
+				continue
+			}
+			
+			// 移除所有后缀标签（包括分别显示的标签）
+			result = a.removeAllSuffixTags(result, format.prefix, format.suffix)
+			
+			// 移除所有前缀标签（包括分别显示的标签）
+			result = a.removeAllPrefixTags(result, format.prefix, format.suffix)
+		}
+		
+		// 如果这一轮没有任何变化，说明已经清理完毕
+		if result == previousResult {
+			break
+		}
+	}
+	
+	// 最终清理多余的空格
+	result = strings.TrimSpace(result)
+	
+	if result != originalResult && a.logger != nil {
+		a.logger.Info("移除文件名标签", 
+			zap.String("original", originalResult),
+			zap.String("cleaned", result),
+		)
+	}
+	
+	return result
+}
+
+// removeAllSuffixTags 移除所有后缀标签
+func (a *App) removeAllSuffixTags(input, prefix, suffix string) string {
+	result := input
+	
+	// 循环移除后缀标签，直到没有更多可移除的
+	for {
+		if !strings.HasSuffix(result, suffix) {
+			break
+		}
+		
+		// 找到最后一个匹配的前缀
+		lastPrefixIdx := strings.LastIndex(result, prefix)
+		if lastPrefixIdx == -1 {
+			break
+		}
+		
+		// 检查这个前缀和后缀是否匹配
+		tagContent := result[lastPrefixIdx+len(prefix) : len(result)-len(suffix)]
+		
+		// 确保标签内容不包含未匹配的括号
+		if a.isValidTagContent(tagContent, prefix, suffix) {
+			// 移除这个标签
+			result = result[:lastPrefixIdx]
+			// 移除可能的空格
+			result = strings.TrimRight(result, " ")
+		} else {
+			break
+		}
+	}
+	
+	return result
+}
+
+// removeAllPrefixTags 移除所有前缀标签
+func (a *App) removeAllPrefixTags(input, prefix, suffix string) string {
+	result := input
+	
+	// 循环移除前缀标签，直到没有更多可移除的
+	for {
+		if !strings.HasPrefix(result, prefix) {
+			break
+		}
+		
+		// 找到第一个匹配的后缀
+		firstSuffixIdx := strings.Index(result, suffix)
+		if firstSuffixIdx == -1 {
+			break
+		}
+		
+		// 检查这个前缀和后缀是否匹配
+		tagContent := result[len(prefix):firstSuffixIdx]
+		
+		// 确保标签内容不包含未匹配的括号
+		if a.isValidTagContent(tagContent, prefix, suffix) {
+			// 移除这个标签
+			result = result[firstSuffixIdx+len(suffix):]
+			// 移除可能的空格
+			result = strings.TrimLeft(result, " ")
+		} else {
+			break
+		}
+	}
+	
+	return result
+}
+
+// isValidTagContent 检查标签内容是否有效（不包含未匹配的括号）
+func (a *App) isValidTagContent(content, prefix, suffix string) bool {
+	// 简单检查：标签内容不应该包含相同的前缀或后缀字符
+	// 这可以防止错误地匹配嵌套的括号
+	return !strings.Contains(content, prefix) && !strings.Contains(content, suffix)
 }
 
 // RenameFileWithTags 根据标签重命名文件
@@ -653,12 +1302,31 @@ func (a *App) RenameFileWithTags(fileID int64) error {
 		return fmt.Errorf("获取文件信息失败: %w", err)
 	}
 
-	// 生成新的文件名
-	newName := generateFileNameWithTags(file.Name, file.Tags)
+	// 记录原始文件名用于日志
+	originalName := file.Name
+	
+	// 生成新的文件名（会自动移除旧格式标签并应用新格式）
+	newName := a.generateFileNameWithTags(file.Name, file.Tags)
 	
 	// 如果文件名没有变化，直接返回
 	if newName == file.Name {
+		if a.logger != nil {
+			a.logger.Debug("文件名无需更改", 
+				zap.Int64("file_id", fileID),
+				zap.String("file_name", file.Name),
+			)
+		}
 		return nil
+	}
+
+	if a.logger != nil {
+		a.logger.Info("应用新标签格式重命名文件", 
+			zap.Int64("file_id", fileID),
+			zap.String("original_name", originalName),
+			zap.String("new_name", newName),
+			zap.String("tag_format", a.settings.TagRule.Format),
+			zap.String("tag_position", a.settings.TagRule.Position),
+		)
 	}
 
 	// 重命名文件
@@ -937,7 +1605,7 @@ func (a *App) processFileNameTags(ctx context.Context, workspaceID int64) error 
 			}
 			
 			// 解析文件名中的标签
-			tags := parseTagsFromFileName(file.Name)
+			tags := a.parseTagsFromFileName(file.Name)
 			if len(tags) == 0 {
 				continue
 			}

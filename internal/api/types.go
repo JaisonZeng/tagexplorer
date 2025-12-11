@@ -42,3 +42,24 @@ type FilePage struct {
 	Total   int64        `json:"total"`
 	Records []FileRecord `json:"records"`
 }
+
+// TagRuleConfig 标签应用规则配置
+type TagRuleConfig struct {
+	Format       string            `json:"format"`        // 标签格式类型
+	CustomFormat *CustomFormat     `json:"customFormat"`  // 自定义格式
+	Position     string            `json:"position"`      // 标签位置 prefix/suffix
+	AddSpaces    bool              `json:"addSpaces"`     // 是否添加空格
+	Grouping     string            `json:"grouping"`      // 标签组合方式 combined/individual
+}
+
+// CustomFormat 自定义标签格式
+type CustomFormat struct {
+	Prefix    string `json:"prefix"`    // 前缀
+	Suffix    string `json:"suffix"`    // 后缀
+	Separator string `json:"separator"` // 分隔符
+}
+
+// AppSettings 应用设置
+type AppSettings struct {
+	TagRule TagRuleConfig `json:"tagRule"`
+}

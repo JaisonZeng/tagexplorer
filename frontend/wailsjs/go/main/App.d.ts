@@ -13,6 +13,8 @@ export function DeleteTag(arg1:number):Promise<void>;
 
 export function GetFiles(arg1:number,arg2:number):Promise<api.FilePage>;
 
+export function GetSettings():Promise<api.AppSettings>;
+
 export function GetThumbnail(arg1:string):Promise<string>;
 
 export function GetWorkspaceFolders():Promise<Array<api.Workspace>>;
@@ -40,5 +42,7 @@ export function SelectWorkspace():Promise<api.ScanResult>;
 export function SetActiveWorkspace(arg1:number):Promise<void>;
 
 export function ShowStartupDialog():Promise<string>;
+
+export function UpdateSettings(arg1:api.AppSettings):Promise<void>;
 
 export function UpdateTagColor(arg1:number,arg2:string):Promise<void>;

@@ -11,6 +11,8 @@ import {useWorkspaceStore} from "./store/workspace";
 import {useShallow} from "zustand/react/shallow";
 import {FolderOpen, Plus, FileText} from "lucide-react";
 import {disableZoom, resetZoom} from "./utils/disableZoom";
+import SettingsDialog from "./components/SettingsDialog";
+import {useSettingsStore} from "./store/settings";
 
 function App() {
   const {
@@ -50,9 +52,11 @@ function App() {
   );
 
   const {preference, resolvedTheme, cyclePreference} = useTheme();
+  const {loadSettings} = useSettingsStore();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [workspaceSidebarVisible, setWorkspaceSidebarVisible] = useState(true);
   const [showStartupDialog, setShowStartupDialog] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
 
   // 检查是否需要显示启动对话框
@@ -74,6 +78,11 @@ function App() {
     // 返回清理函数
     return cleanup;
   }, []);
+
+  // 应用启动时加载设置
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const handleSelectWorkspace = async () => {
     await selectWorkspace();
@@ -101,6 +110,7 @@ function App() {
         onToggleTheme={cyclePreference}
         onToggleWorkspaceSidebar={() => setWorkspaceSidebarVisible(!workspaceSidebarVisible)}
         workspaceSidebarVisible={workspaceSidebarVisible}
+        onOpenSettings={() => setShowSettingsDialog(true)}
       />
 
       <div className="flex flex-1 overflow-hidden">
@@ -196,6 +206,12 @@ function App() {
       {showStartupDialog && (
         <StartupDialog onComplete={handleStartupComplete} />
       )}
+
+      {/* 设置对话框 */}
+      <SettingsDialog 
+        isOpen={showSettingsDialog}
+        onClose={() => setShowSettingsDialog(false)}
+      />
     </div>
   );
 }

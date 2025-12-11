@@ -18,6 +18,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import type {TagInfo} from "../types/files";
+import useConfirm from "../hooks/useConfirm";
 
 const DEFAULT_COLOR = "#94a3b8";
 
@@ -131,6 +132,7 @@ interface TagItemProps {
   onSelect: (tagId: number, append: boolean) => void;
   onDelete: (tagId: number) => void;
   onUpdateColor: (tagId: number, color: string) => void;
+  onConfirmDelete: (tagId: number, tagName: string) => Promise<void>;
 }
 
 // 批量颜色选择按钮组件
@@ -167,7 +169,7 @@ const BatchColorPickerButton = ({show, onShow, onClose, onChange}: BatchColorPic
   );
 };
 
-const TagItem = ({tag, selected, onSelect, onDelete, onUpdateColor}: TagItemProps) => {
+const TagItem = ({tag, selected, onSelect, onDelete, onUpdateColor, onConfirmDelete}: TagItemProps) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -247,7 +249,7 @@ const TagItem = ({tag, selected, onSelect, onDelete, onUpdateColor}: TagItemProp
               onClick={(e) => {
                 e.stopPropagation();
                 setShowMenu(false);
-                onDelete(tag.id);
+                onConfirmDelete(tag.id, tag.name);
               }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
             >
@@ -271,6 +273,8 @@ const TagItem = ({tag, selected, onSelect, onDelete, onUpdateColor}: TagItemProp
 };
 
 const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
+  const { confirm, ConfirmComponent } = useConfirm();
+  
   const {
     tags,
     loading,
@@ -336,7 +340,16 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
 
   const handleBatchDelete = async () => {
     if (selectedTagIds.length === 0) return;
-    if (confirm(`确定要删除选中的 ${selectedTagIds.length} 个标签吗？`)) {
+    
+    const confirmed = await confirm({
+      title: '删除标签',
+      message: `确定要删除选中的 ${selectedTagIds.length} 个标签吗？此操作不可撤销，同时会从所有文件中移除这些标签。`,
+      confirmText: '删除',
+      cancelText: '取消',
+      type: 'danger',
+    });
+    
+    if (confirmed) {
       await deleteTags(selectedTagIds);
       setSelectedTagIds([]);
     }
@@ -347,6 +360,20 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
       await updateTagColor(tagId, newColor);
     }
     setShowBatchColorPicker(false);
+  };
+
+  const handleSingleDelete = async (tagId: number, tagName: string) => {
+    const confirmed = await confirm({
+      title: '删除标签',
+      message: `确定要删除标签"${tagName}"吗？此操作不可撤销，同时会从所有文件中移除此标签。`,
+      confirmText: '删除',
+      cancelText: '取消',
+      type: 'danger',
+    });
+    
+    if (confirmed) {
+      await deleteTag(tagId);
+    }
   };
 
   const handleSelectAll = () => {
@@ -527,11 +554,15 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
                 onSelect={handleSelectTag}
                 onDelete={deleteTag}
                 onUpdateColor={updateTagColor}
+                onConfirmDelete={handleSingleDelete}
               />
             ))
           )}
         </div>
       </div>
+      
+      {/* 确认对话框 */}
+      <ConfirmComponent />
     </aside>
   );
 };
