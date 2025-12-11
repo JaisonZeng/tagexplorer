@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -187,6 +188,179 @@ func (a *App) SetActiveWorkspace(workspaceID int64) error {
 	}
 	
 	return nil
+}
+
+// WorkspaceConfig 工作区配置文件结构
+type WorkspaceConfig struct {
+	Name      string    `json:"name"`
+	Folders   []string  `json:"folders"`
+	CreatedAt time.Time `json:"created_at"`
+	Version   string    `json:"version"`
+}
+
+// SaveWorkspaceConfig 保存工作区配置到文件
+func (a *App) SaveWorkspaceConfig(name string, folders []string) (string, error) {
+	if a.ctx == nil {
+		return "", errors.New("应用尚未完成初始化")
+	}
+	if name == "" {
+		return "", errors.New("工作区名称不能为空")
+	}
+	if len(folders) == 0 {
+		return "", errors.New("工作区必须包含至少一个文件夹")
+	}
+
+	// 让用户选择保存位置
+	selectedPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "保存工作区配置",
+		DefaultFilename: name + ".teworkplace",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "TagExplorer 工作区文件 (*.teworkplace)",
+				Pattern:     "*.teworkplace",
+			},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("打开保存对话框失败: %w", err)
+	}
+	if selectedPath == "" {
+		return "", nil // 用户取消
+	}
+
+	// 确保文件扩展名正确
+	if !strings.HasSuffix(strings.ToLower(selectedPath), ".teworkplace") {
+		selectedPath += ".teworkplace"
+	}
+
+	// 创建配置对象
+	config := WorkspaceConfig{
+		Name:      name,
+		Folders:   folders,
+		CreatedAt: time.Now().UTC(),
+		Version:   "1.0",
+	}
+
+	// 序列化为 JSON
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("序列化配置失败: %w", err)
+	}
+
+	// 写入文件
+	if err := os.WriteFile(selectedPath, data, 0644); err != nil {
+		return "", fmt.Errorf("保存配置文件失败: %w", err)
+	}
+
+	if a.logger != nil {
+		a.logger.Info("保存工作区配置成功", 
+			zap.String("name", name),
+			zap.String("path", selectedPath),
+			zap.Strings("folders", folders),
+		)
+	}
+
+	return selectedPath, nil
+}
+
+// LoadWorkspaceConfig 加载工作区配置文件
+func (a *App) LoadWorkspaceConfig() (*WorkspaceConfig, error) {
+	if a.ctx == nil {
+		return nil, errors.New("应用尚未完成初始化")
+	}
+
+	// 让用户选择配置文件
+	selectedPath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "打开工作区配置",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "TagExplorer 工作区文件 (*.teworkplace)",
+				Pattern:     "*.teworkplace",
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("打开文件对话框失败: %w", err)
+	}
+	if selectedPath == "" {
+		return nil, nil // 用户取消
+	}
+
+	// 读取文件
+	data, err := os.ReadFile(selectedPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取配置文件失败: %w", err)
+	}
+
+	// 解析 JSON
+	var config WorkspaceConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+
+	// 验证配置
+	if config.Name == "" {
+		return nil, errors.New("配置文件中缺少工作区名称")
+	}
+	if len(config.Folders) == 0 {
+		return nil, errors.New("配置文件中没有文件夹")
+	}
+
+	// 验证文件夹是否存在
+	var validFolders []string
+	for _, folder := range config.Folders {
+		if _, err := os.Stat(folder); err == nil {
+			validFolders = append(validFolders, folder)
+		} else {
+			if a.logger != nil {
+				a.logger.Warn("工作区文件夹不存在", zap.String("path", folder))
+			}
+		}
+	}
+
+	if len(validFolders) == 0 {
+		return nil, errors.New("配置文件中的所有文件夹都不存在")
+	}
+
+	config.Folders = validFolders
+
+	if a.logger != nil {
+		a.logger.Info("加载工作区配置成功", 
+			zap.String("name", config.Name),
+			zap.String("path", selectedPath),
+			zap.Strings("folders", config.Folders),
+		)
+	}
+
+	return &config, nil
+}
+
+// ShowStartupDialog 显示启动选择对话框
+func (a *App) ShowStartupDialog() (string, error) {
+	if a.ctx == nil {
+		return "", errors.New("应用尚未完成初始化")
+	}
+
+	// 使用消息对话框让用户选择
+	selection, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "TagExplorer - 选择启动方式",
+		Message:       "请选择您要如何开始：",
+		Buttons:       []string{"打开工作区文件", "打开文件夹", "取消"},
+		DefaultButton: "打开工作区文件",
+	})
+	if err != nil {
+		return "", fmt.Errorf("显示启动对话框失败: %w", err)
+	}
+
+	switch selection {
+	case "打开工作区文件":
+		return "workspace", nil
+	case "打开文件夹":
+		return "folder", nil
+	default:
+		return "cancel", nil
+	}
 }
 
 // ScanWorkspaceFolder 扫描指定路径的文件夹

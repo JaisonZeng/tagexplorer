@@ -1,5 +1,4 @@
 import {create} from "zustand";
-import {persist} from "zustand/middleware";
 import {
   GetFiles,
   SelectWorkspace,
@@ -8,6 +7,9 @@ import {
   GetWorkspaceFolders,
   ScanWorkspaceFolder,
   SetActiveWorkspace,
+  SaveWorkspaceConfig,
+  LoadWorkspaceConfig,
+  ShowStartupDialog,
 } from "../../wailsjs/go/main/App";
 import type {FileEntry, TagInfo, WorkspaceInfo, WorkspaceStats} from "../types/files";
 
@@ -23,7 +25,8 @@ export interface WorkspaceFolder {
 export interface WorkspaceConfig {
   name: string;
   folders: string[];
-  createdAt: string;
+  created_at: string;
+  version: string;
 }
 
 interface WorkspaceState {
@@ -44,8 +47,6 @@ interface WorkspaceState {
   error?: string;
   selectedFileIds: number[];
   lastSelectedIndex: number | null;
-  // 保存的工作区配置
-  savedConfigs: WorkspaceConfig[];
   
   // Actions
   selectWorkspace: () => Promise<void>;
@@ -59,9 +60,9 @@ interface WorkspaceState {
   removeTagFromFilesLocal: (fileIds: number[], tagID: number) => void;
   updateTagColorLocal: (tagId: number, color: string) => void;
   // 工作区配置管理
-  saveCurrentConfig: (name: string) => void;
-  loadConfig: (config: WorkspaceConfig) => Promise<void>;
-  deleteConfig: (name: string) => void;
+  saveWorkspaceToFile: (name: string) => Promise<string | null>;
+  loadWorkspaceFromFile: () => Promise<void>;
+  showStartupDialog: () => Promise<string>;
   refreshFolders: () => Promise<void>;
 }
 
@@ -99,9 +100,7 @@ const normalizeFileRecord = (payload: any): FileEntry => ({
   tags: Array.isArray(payload?.tags) ? payload.tags.map(normalizeTag) : [],
 });
 
-export const useWorkspaceStore = create<WorkspaceState>()(
-  persist(
-    (set, get) => ({
+export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       folders: [],
       activeFolderId: null,
       files: [],
@@ -114,7 +113,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       error: undefined,
       selectedFileIds: [],
       lastSelectedIndex: null,
-      savedConfigs: [],
 
       // 兼容旧的选择工作区方法（选择单个文件夹）
       selectWorkspace: async () => {
@@ -459,28 +457,26 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           return {...state, files};
         }),
 
-      // 保存当前工作区配置
-      saveCurrentConfig: (name: string) => {
-        const {folders, savedConfigs} = get();
-        const config: WorkspaceConfig = {
-          name,
-          folders: folders.map((f) => f.path),
-          createdAt: new Date().toISOString(),
-        };
-        
-        // 如果同名配置已存在，替换它
-        const existingIndex = savedConfigs.findIndex((c) => c.name === name);
-        if (existingIndex >= 0) {
-          const newConfigs = [...savedConfigs];
-          newConfigs[existingIndex] = config;
-          set({savedConfigs: newConfigs});
-        } else {
-          set({savedConfigs: [...savedConfigs, config]});
+      // 保存工作区配置到文件
+      saveWorkspaceToFile: async (name: string) => {
+        const {folders} = get();
+        if (folders.length === 0) {
+          throw new Error("没有文件夹可以保存");
+        }
+
+        try {
+          const folderPaths = folders.map((f) => f.path);
+          const savedPath = await SaveWorkspaceConfig(name, folderPaths);
+          return savedPath;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          set({error: message});
+          throw error;
         }
       },
 
-      // 加载工作区配置
-      loadConfig: async (config: WorkspaceConfig) => {
+      // 从文件加载工作区配置
+      loadWorkspaceFromFile: async () => {
         set({
           folders: [],
           activeFolderId: null,
@@ -488,9 +484,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           stats: undefined,
           files: [],
           loading: true,
+          error: undefined,
         });
 
         try {
+          const config = await LoadWorkspaceConfig();
+          if (!config) {
+            // 用户取消了选择
+            set({loading: false});
+            return;
+          }
+
           for (const folderPath of config.folders) {
             const result = await ScanWorkspaceFolder(folderPath);
             if (result) {
@@ -513,18 +517,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
       },
 
-      // 删除工作区配置
-      deleteConfig: (name: string) => {
-        set((state) => ({
-          savedConfigs: state.savedConfigs.filter((c) => c.name !== name),
-        }));
+      // 显示启动选择对话框
+      showStartupDialog: async () => {
+        try {
+          const choice = await ShowStartupDialog();
+          return choice;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          set({error: message});
+          throw error;
+        }
       },
-    }),
-    {
-      name: "tagexplorer-workspace",
-      partialize: (state) => ({
-        savedConfigs: state.savedConfigs,
-      }),
-    }
-  )
-);
+    }));

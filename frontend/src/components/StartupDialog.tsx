@@ -1,0 +1,128 @@
+import {useState, useEffect} from "react";
+import {useShallow} from "zustand/react/shallow";
+import {useWorkspaceStore} from "../store/workspace";
+import {Folder, FolderOpen, FileText} from "lucide-react";
+
+interface StartupDialogProps {
+  onComplete: () => void;
+}
+
+const StartupDialog = ({onComplete}: StartupDialogProps) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const {
+    showStartupDialog,
+    loadWorkspaceFromFile,
+    selectWorkspace,
+  } = useWorkspaceStore(
+    useShallow((state) => ({
+      showStartupDialog: state.showStartupDialog,
+      loadWorkspaceFromFile: state.loadWorkspaceFromFile,
+      selectWorkspace: state.selectWorkspace,
+    }))
+  );
+
+  const handleChoice = async (choice: "workspace" | "folder") => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      if (choice === "workspace") {
+        await loadWorkspaceFromFile();
+      } else {
+        await selectWorkspace();
+      }
+      onComplete();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancel = () => {
+    onComplete();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="w-96 rounded-lg bg-white p-6 shadow-xl dark:bg-slate-800">
+        <div className="mb-6 text-center">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            TagExplorer
+          </h2>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            选择您要如何开始使用
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 rounded-md bg-red-50 p-3 dark:bg-red-900/20">
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <button
+            onClick={() => handleChoice("workspace")}
+            disabled={loading}
+            className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-4 text-left transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-700"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10 text-brand">
+              <FileText size={20} />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-medium text-slate-900 dark:text-white">
+                打开工作区文件
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                加载已保存的 .teworkplace 配置文件
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => handleChoice("folder")}
+            disabled={loading}
+            className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-4 text-left transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-700"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400">
+              <Folder size={20} />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-medium text-slate-900 dark:text-white">
+                打开文件夹
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                选择一个文件夹开始浏览
+              </p>
+            </div>
+          </button>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            onClick={handleCancel}
+            disabled={loading}
+            className="rounded-md px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-700"
+          >
+            取消
+          </button>
+        </div>
+
+        {loading && (
+          <div className="mt-4 text-center">
+            <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand"></div>
+              处理中...
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default StartupDialog;

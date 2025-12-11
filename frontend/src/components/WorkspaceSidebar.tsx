@@ -17,44 +17,52 @@ const WorkspaceSidebar = () => {
   const {
     folders,
     activeFolderId,
-    savedConfigs,
     selecting,
     addFolder,
     removeFolder,
     setActiveFolder,
-    saveCurrentConfig,
-    loadConfig,
-    deleteConfig,
+    saveWorkspaceToFile,
+    loadWorkspaceFromFile,
   } = useWorkspaceStore(
     useShallow((state) => ({
       folders: state.folders,
       activeFolderId: state.activeFolderId,
-      savedConfigs: state.savedConfigs,
       selecting: state.selecting,
       addFolder: state.addFolder,
       removeFolder: state.removeFolder,
       setActiveFolder: state.setActiveFolder,
-      saveCurrentConfig: state.saveCurrentConfig,
-      loadConfig: state.loadConfig,
-      deleteConfig: state.deleteConfig,
+      saveWorkspaceToFile: state.saveWorkspaceToFile,
+      loadWorkspaceFromFile: state.loadWorkspaceFromFile,
     }))
   );
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [configName, setConfigName] = useState("");
-  const [showConfigs, setShowConfigs] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const handleSaveConfig = () => {
-    if (configName.trim()) {
-      saveCurrentConfig(configName.trim());
-      setConfigName("");
-      setShowSaveDialog(false);
+  const handleSaveConfig = async () => {
+    if (configName.trim() && !saving) {
+      setSaving(true);
+      try {
+        const savedPath = await saveWorkspaceToFile(configName.trim());
+        if (savedPath) {
+          setConfigName("");
+          setShowSaveDialog(false);
+        }
+      } catch (error) {
+        console.error("保存工作区配置失败:", error);
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
-  const handleLoadConfig = async (config: WorkspaceConfig) => {
-    await loadConfig(config);
-    setShowConfigs(false);
+  const handleLoadConfig = async () => {
+    try {
+      await loadWorkspaceFromFile();
+    } catch (error) {
+      console.error("加载工作区配置失败:", error);
+    }
   };
 
   return (
@@ -69,20 +77,18 @@ const WorkspaceSidebar = () => {
             <button
               onClick={() => setShowSaveDialog(true)}
               className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700"
-              title="保存工作区配置"
+              title="保存工作区配置到文件"
             >
               <Save size={14} />
             </button>
           )}
-          {savedConfigs.length > 0 && (
-            <button
-              onClick={() => setShowConfigs(!showConfigs)}
-              className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700"
-              title="加载工作区配置"
-            >
-              <FolderInput size={14} />
-            </button>
-          )}
+          <button
+            onClick={handleLoadConfig}
+            className="rounded p-1 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700"
+            title="从文件加载工作区配置"
+          >
+            <FolderInput size={14} />
+          </button>
           <button
             onClick={() => addFolder()}
             disabled={selecting}
@@ -110,10 +116,10 @@ const WorkspaceSidebar = () => {
             />
             <button
               onClick={handleSaveConfig}
-              disabled={!configName.trim()}
+              disabled={!configName.trim() || saving}
               className="rounded bg-brand px-2 py-1 text-xs text-white hover:bg-brand-dark disabled:opacity-50"
             >
-              保存
+              {saving ? "保存中..." : "保存"}
             </button>
             <button
               onClick={() => setShowSaveDialog(false)}
@@ -125,38 +131,7 @@ const WorkspaceSidebar = () => {
         </div>
       )}
 
-      {/* 已保存的配置列表 */}
-      {showConfigs && savedConfigs.length > 0 && (
-        <div className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-          <div className="p-2">
-            <p className="mb-2 text-xs text-slate-500">已保存的配置</p>
-            <div className="space-y-1">
-              {savedConfigs.map((config) => (
-                <div
-                  key={config.name}
-                  className="group flex items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-700"
-                >
-                  <button
-                    onClick={() => handleLoadConfig(config)}
-                    className="flex-1 text-left text-slate-700 dark:text-slate-300"
-                  >
-                    <span className="font-medium">{config.name}</span>
-                    <span className="ml-2 text-slate-400">
-                      ({config.folders.length} 个文件夹)
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => deleteConfig(config.name)}
-                    className="rounded p-1 text-slate-400 opacity-0 transition hover:text-red-500 group-hover:opacity-100"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* 文件夹列表 */}
       <div className="flex-1 overflow-y-auto p-2">

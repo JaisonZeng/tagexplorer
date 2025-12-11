@@ -38,6 +38,10 @@ export function ListTags() {
   return window['go']['main']['App']['ListTags']();
 }
 
+export function LoadWorkspaceConfig() {
+  return window['go']['main']['App']['LoadWorkspaceConfig']();
+}
+
 export function RemoveTagFromFile(arg1, arg2) {
   return window['go']['main']['App']['RemoveTagFromFile'](arg1, arg2);
 }
@@ -54,6 +58,10 @@ export function RenameFileWithTags(arg1) {
   return window['go']['main']['App']['RenameFileWithTags'](arg1);
 }
 
+export function SaveWorkspaceConfig(arg1, arg2) {
+  return window['go']['main']['App']['SaveWorkspaceConfig'](arg1, arg2);
+}
+
 export function ScanWorkspaceFolder(arg1) {
   return window['go']['main']['App']['ScanWorkspaceFolder'](arg1);
 }
@@ -64,6 +72,10 @@ export function SelectWorkspace() {
 
 export function SetActiveWorkspace(arg1) {
   return window['go']['main']['App']['SetActiveWorkspace'](arg1);
+}
+
+export function ShowStartupDialog() {
+  return window['go']['main']['App']['ShowStartupDialog']();
 }
 
 export function UpdateTagColor(arg1, arg2) {
