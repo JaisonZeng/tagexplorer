@@ -1,14 +1,14 @@
-import {useEffect, useMemo, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 import {useShallow} from "zustand/react/shallow";
-import {Eye, Plus, Trash2, Undo2, X, AlertTriangle, Sparkles} from "lucide-react";
+import {Eye, Plus, Trash2, Undo2, X, AlertTriangle, Sparkles, CheckCircle2, AlertCircle, Info} from "lucide-react";
 import {PreviewOrganize, ExecuteOrganize, UndoOrganize} from "../../wailsjs/go/main/App";
+import {api} from "../../wailsjs/go/models";
 import {useTagStore} from "../store/tags";
 import {useWorkspaceStore} from "../store/workspace";
 import type {
   OrganizeLevelPayload,
   OrganizePreview,
   OrganizePreviewItem,
-  OrganizeRequestPayload,
   OrganizeResult,
 } from "../types/organize";
 
@@ -57,6 +57,8 @@ const OrganizeDialog = ({open, onClose}: OrganizeDialogProps) => {
   const [executing, setExecuting] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [error, setError] = useState<string>();
+  const [toast, setToast] = useState<{type: "success" | "info" | "error"; text: string} | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
 
   const hasWorkspace = useMemo(() => folders.length > 0 || !!workspace, [folders.length, workspace]);
   const canPreview = hasWorkspace && levels.every((level) => level.tag_ids.length > 0);
@@ -69,8 +71,25 @@ const OrganizeDialog = ({open, onClose}: OrganizeDialogProps) => {
       setError(undefined);
       setPreview(null);
       setLevels([{tag_ids: []}]);
+      setToast(null);
     }
   }, [open, initialized, fetchTags]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showToast = (text: string, type: "success" | "info" | "error" = "success") => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    setToast({type, text});
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3200);
+  };
 
   const handleUpdateLevel = (index: number, next: OrganizeLevelPayload) => {
     setLevels((prev) => prev.map((item, idx) => (idx === index ? next : item)));
@@ -84,16 +103,15 @@ const OrganizeDialog = ({open, onClose}: OrganizeDialogProps) => {
     setLevels((prev) => (prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== index)));
   };
 
-  const buildRequest = (): OrganizeRequestPayload => ({
-    levels,
-  });
+  const buildRequest = (): api.OrganizeRequest =>
+    api.OrganizeRequest.createFrom({levels});
 
   const handlePreview = async () => {
     setLoading(true);
     setError(undefined);
     try {
-      const response = (await PreviewOrganize(buildRequest())) as OrganizePreview;
-      setPreview(response);
+      const response = await PreviewOrganize(buildRequest());
+      setPreview(response as OrganizePreview);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -106,13 +124,16 @@ const OrganizeDialog = ({open, onClose}: OrganizeDialogProps) => {
     setExecuting(true);
     setError(undefined);
     try {
-      const response = (await ExecuteOrganize(buildRequest())) as OrganizeResult;
-      setPreview(response.preview);
+      const response = await ExecuteOrganize(buildRequest());
+      setPreview((response.preview ?? null) as unknown as OrganizePreview);
       setLastOperationId(response.operation_id ?? null);
+      const moved = (response.preview as any)?.summary?.move_count ?? 0;
+      showToast(`整理完成，已移动 ${moved} 个文件`, "success");
       await fetchNextPage(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
+      showToast(message, "error");
     } finally {
       setExecuting(false);
     }
@@ -123,12 +144,14 @@ const OrganizeDialog = ({open, onClose}: OrganizeDialogProps) => {
     setUndoing(true);
     setError(undefined);
     try {
-      await UndoOrganize(lastOperationId);
+      const result = await UndoOrganize(lastOperationId);
       setPreview(null);
+      showToast(`已撤销 ${result.restored} 个文件${result.failed > 0 ? `，失败 ${result.failed} 个` : ""}`, result.failed > 0 ? "error" : "success");
       await fetchNextPage(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
+      showToast(message, "error");
     } finally {
       setUndoing(false);
     }
@@ -165,6 +188,24 @@ const OrganizeDialog = ({open, onClose}: OrganizeDialogProps) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      {toast && (
+        <div className="pointer-events-none fixed right-4 top-4 z-[9999]">
+          <div
+            className={`pointer-events-auto flex items-center gap-2 rounded-lg px-3 py-2 text-sm shadow-lg ${
+              toast.type === "success"
+                ? "bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-200"
+                : toast.type === "error"
+                  ? "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-200"
+                  : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            }`}
+          >
+            {toast.type === "success" && <CheckCircle2 size={16} />}
+            {toast.type === "error" && <AlertCircle size={16} />}
+            {toast.type === "info" && <Info size={16} />}
+            <span>{toast.text}</span>
+          </div>
+        </div>
+      )}
       <div className="relative w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-slate-900">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
           <div>
