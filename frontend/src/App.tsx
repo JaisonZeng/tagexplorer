@@ -6,6 +6,7 @@ import MenuBar from "./components/MenuBar";
 import StatusBar from "./components/StatusBar";
 import WorkspaceSidebar from "./components/WorkspaceSidebar";
 import StartupDialog from "./components/StartupDialog";
+import OrganizeDialog from "./components/OrganizeDialog";
 import {useTheme} from "./hooks/useTheme";
 import {useWorkspaceStore} from "./store/workspace";
 import {useShallow} from "zustand/react/shallow";
@@ -57,6 +58,7 @@ function App() {
   const [workspaceSidebarVisible, setWorkspaceSidebarVisible] = useState(true);
   const [showStartupDialog, setShowStartupDialog] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [showOrganizeDialog, setShowOrganizeDialog] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
 
   // 检查是否需要显示启动对话框
@@ -110,6 +112,7 @@ function App() {
         onToggleTheme={cyclePreference}
         onToggleWorkspaceSidebar={() => setWorkspaceSidebarVisible(!workspaceSidebarVisible)}
         workspaceSidebarVisible={workspaceSidebarVisible}
+        onOpenOrganize={() => setShowOrganizeDialog(true)}
         onOpenSettings={() => setShowSettingsDialog(true)}
       />
 
@@ -192,6 +195,11 @@ function App() {
       {showStartupDialog && (
         <StartupDialog onComplete={handleStartupComplete} />
       )}
+
+      <OrganizeDialog 
+        open={showOrganizeDialog}
+        onClose={() => setShowOrganizeDialog(false)}
+      />
 
       {/* 设置对话框 */}
       <SettingsDialog 

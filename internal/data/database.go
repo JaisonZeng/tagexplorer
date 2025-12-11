@@ -713,7 +713,7 @@ func (d *Database) GetOrCreateTagByName(ctx context.Context, name, defaultColor 
 	if d == nil || d.conn == nil {
 		return nil, errors.New("数据库对象尚未初始化")
 	}
-	
+
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, errors.New("标签名称不可为空")
@@ -1040,7 +1040,6 @@ func (d *Database) SetSetting(ctx context.Context, key, value string) error {
 	return nil
 }
 
-
 // RecentItem 表示最近打开的项目
 type RecentItem struct {
 	ID       int64     `json:"id"`
@@ -1125,5 +1124,72 @@ func (d *Database) RemoveRecentItem(ctx context.Context, path string) error {
 		return fmt.Errorf("移除最近项目失败: %w", err)
 	}
 
+	return nil
+}
+
+// Operation 表示一条操作记录
+type Operation struct {
+	ID        int64     `json:"id"`
+	Type      string    `json:"type"`
+	Payload   string    `json:"payload"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// InsertOperation 写入操作记录
+func (d *Database) InsertOperation(ctx context.Context, opType, payload string) (int64, error) {
+	if d == nil || d.conn == nil {
+		return 0, errors.New("数据库对象尚未初始化")
+	}
+	if opType == "" {
+		return 0, errors.New("操作类型不能为空")
+	}
+	if payload == "" {
+		return 0, errors.New("操作内容不能为空")
+	}
+
+	result, err := d.conn.ExecContext(ctx, `INSERT INTO operations(type, payload) VALUES(?, ?)`, opType, payload)
+	if err != nil {
+		return 0, fmt.Errorf("写入操作记录失败: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("获取操作记录 ID 失败: %w", err)
+	}
+	return id, nil
+}
+
+// GetOperation 读取操作记录
+func (d *Database) GetOperation(ctx context.Context, id int64) (*Operation, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	if id <= 0 {
+		return nil, errors.New("无效的操作 ID")
+	}
+
+	row := d.conn.QueryRowContext(ctx, `SELECT id, type, payload, created_at FROM operations WHERE id = ?`, id)
+	var op Operation
+	if err := row.Scan(&op.ID, &op.Type, &op.Payload, &op.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("操作记录不存在")
+		}
+		return nil, fmt.Errorf("查询操作记录失败: %w", err)
+	}
+	return &op, nil
+}
+
+// DeleteOperation 删除操作记录
+func (d *Database) DeleteOperation(ctx context.Context, id int64) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if id <= 0 {
+		return errors.New("无效的操作 ID")
+	}
+
+	if _, err := d.conn.ExecContext(ctx, `DELETE FROM operations WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("删除操作记录失败: %w", err)
+	}
 	return nil
 }

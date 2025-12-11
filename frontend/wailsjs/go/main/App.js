@@ -22,6 +22,10 @@ export function DeleteTag(arg1) {
   return window['go']['main']['App']['DeleteTag'](arg1);
 }
 
+export function ExecuteOrganize(arg1) {
+  return window['go']['main']['App']['ExecuteOrganize'](arg1);
+}
+
 export function GetFiles(arg1, arg2) {
   return window['go']['main']['App']['GetFiles'](arg1, arg2);
 }
@@ -56,6 +60,10 @@ export function LoadWorkspaceConfig() {
 
 export function OpenRecentItem(arg1, arg2) {
   return window['go']['main']['App']['OpenRecentItem'](arg1, arg2);
+}
+
+export function PreviewOrganize(arg1) {
+  return window['go']['main']['App']['PreviewOrganize'](arg1);
 }
 
 export function RemoveRecentItem(arg1) {
@@ -100,6 +108,10 @@ export function SetActiveWorkspace(arg1) {
 
 export function ShowStartupDialog() {
   return window['go']['main']['App']['ShowStartupDialog']();
+}
+
+export function UndoOrganize(arg1) {
+  return window['go']['main']['App']['UndoOrganize'](arg1);
 }
 
 export function UpdateSettings(arg1) {

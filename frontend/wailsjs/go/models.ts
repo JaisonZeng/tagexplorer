@@ -204,6 +204,176 @@ export namespace api {
 	        this.offset = source["offset"];
 	    }
 	}
+	export class OrganizeLevel {
+	    tag_ids: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new OrganizeLevel(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tag_ids = source["tag_ids"];
+	    }
+	}
+	export class OrganizeSummary {
+	    total: number;
+	    move_count: number;
+	    conflict_count: number;
+	    skip_count: number;
+	    already_in_place: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrganizeSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.total = source["total"];
+	        this.move_count = source["move_count"];
+	        this.conflict_count = source["conflict_count"];
+	        this.skip_count = source["skip_count"];
+	        this.already_in_place = source["already_in_place"];
+	    }
+	}
+	export class OrganizePreviewItem {
+	    file_id: number;
+	    original_path: string;
+	    target_path: string;
+	    status: string;
+	    missing_tags?: string[];
+	    tags?: string[];
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrganizePreviewItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.file_id = source["file_id"];
+	        this.original_path = source["original_path"];
+	        this.target_path = source["target_path"];
+	        this.status = source["status"];
+	        this.missing_tags = source["missing_tags"];
+	        this.tags = source["tags"];
+	        this.message = source["message"];
+	    }
+	}
+	export class OrganizePreview {
+	    items: OrganizePreviewItem[];
+	    summary: OrganizeSummary;
+	    base_path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrganizePreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], OrganizePreviewItem);
+	        this.summary = this.convertValues(source["summary"], OrganizeSummary);
+	        this.base_path = source["base_path"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class OrganizeRequest {
+	    levels: OrganizeLevel[];
+	
+	    static createFrom(source: any = {}) {
+	        return new OrganizeRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.levels = this.convertValues(source["levels"], OrganizeLevel);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class OrganizeResult {
+	    preview: OrganizePreview;
+	    operation_id: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrganizeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.preview = this.convertValues(source["preview"], OrganizePreview);
+	        this.operation_id = source["operation_id"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class OrganizeUndoResult {
+	    restored: number;
+	    failed: number;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new OrganizeUndoResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.restored = source["restored"];
+	        this.failed = source["failed"];
+	        this.message = source["message"];
+	    }
+	}
 	export class Workspace {
 	    id: number;
 	    path: string;

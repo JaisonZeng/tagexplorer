@@ -13,6 +13,8 @@ export function CreateTag(arg1:string,arg2:string,arg3:any):Promise<api.Tag>;
 
 export function DeleteTag(arg1:number):Promise<void>;
 
+export function ExecuteOrganize(arg1:api.OrganizeRequest):Promise<api.OrganizeResult>;
+
 export function GetFiles(arg1:number,arg2:number):Promise<api.FilePage>;
 
 export function GetRecentItems():Promise<Array<main.RecentItem>>;
@@ -30,6 +32,8 @@ export function ListTags():Promise<Array<api.Tag>>;
 export function LoadWorkspaceConfig():Promise<main.WorkspaceConfig>;
 
 export function OpenRecentItem(arg1:string,arg2:string):Promise<api.ScanResult>;
+
+export function PreviewOrganize(arg1:api.OrganizeRequest):Promise<api.OrganizePreview>;
 
 export function RemoveRecentItem(arg1:string):Promise<void>;
 
@@ -52,6 +56,8 @@ export function SelectWorkspace():Promise<api.ScanResult>;
 export function SetActiveWorkspace(arg1:number):Promise<void>;
 
 export function ShowStartupDialog():Promise<string>;
+
+export function UndoOrganize(arg1:number):Promise<api.OrganizeUndoResult>;
 
 export function UpdateSettings(arg1:api.AppSettings):Promise<void>;
 
