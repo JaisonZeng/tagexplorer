@@ -10,6 +10,8 @@ import {useTheme} from "./hooks/useTheme";
 import {useWorkspaceStore} from "./store/workspace";
 import {useShallow} from "zustand/react/shallow";
 import {FolderOpen, Plus, FileText} from "lucide-react";
+import {disableZoom, resetZoom} from "./utils/disableZoom";
+import ZoomTestPanel from "./components/ZoomTestPanel";
 
 function App() {
   const {
@@ -61,6 +63,18 @@ function App() {
     }
     setHasInitialized(true);
   }, [hasInitialized, folders.length, workspace]);
+
+  // 禁用全局缩放功能
+  useEffect(() => {
+    // 重置页面缩放到 100%
+    resetZoom();
+    
+    // 禁用缩放事件
+    const cleanup = disableZoom();
+    
+    // 返回清理函数
+    return cleanup;
+  }, []);
 
   const handleSelectWorkspace = async () => {
     await selectWorkspace();
@@ -183,6 +197,9 @@ function App() {
       {showStartupDialog && (
         <StartupDialog onComplete={handleStartupComplete} />
       )}
+
+      {/* 开发模式下的缩放测试面板 */}
+      {import.meta.env.DEV && <ZoomTestPanel />}
     </div>
   );
 }
