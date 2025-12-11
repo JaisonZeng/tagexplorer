@@ -11,7 +11,6 @@ import {useWorkspaceStore} from "./store/workspace";
 import {useShallow} from "zustand/react/shallow";
 import {FolderOpen, Plus, FileText} from "lucide-react";
 import {disableZoom, resetZoom} from "./utils/disableZoom";
-import ZoomTestPanel from "./components/ZoomTestPanel";
 
 function App() {
   const {
@@ -197,9 +196,6 @@ function App() {
       {showStartupDialog && (
         <StartupDialog onComplete={handleStartupComplete} />
       )}
-
-      {/* 开发模式下的缩放测试面板 */}
-      {import.meta.env.DEV && <ZoomTestPanel />}
     </div>
   );
 }
