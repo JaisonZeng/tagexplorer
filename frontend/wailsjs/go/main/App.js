@@ -10,6 +10,10 @@ export function AddWorkspaceFolder() {
   return window['go']['main']['App']['AddWorkspaceFolder']();
 }
 
+export function ClearAllTagsFromFile(arg1) {
+  return window['go']['main']['App']['ClearAllTagsFromFile'](arg1);
+}
+
 export function CreateTag(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateTag'](arg1, arg2, arg3);
 }
@@ -20,6 +24,10 @@ export function DeleteTag(arg1) {
 
 export function GetFiles(arg1, arg2) {
   return window['go']['main']['App']['GetFiles'](arg1, arg2);
+}
+
+export function GetRecentItems() {
+  return window['go']['main']['App']['GetRecentItems']();
 }
 
 export function GetSettings() {
@@ -44,6 +52,14 @@ export function ListTags() {
 
 export function LoadWorkspaceConfig() {
   return window['go']['main']['App']['LoadWorkspaceConfig']();
+}
+
+export function OpenRecentItem(arg1, arg2) {
+  return window['go']['main']['App']['OpenRecentItem'](arg1, arg2);
+}
+
+export function RemoveRecentItem(arg1) {
+  return window['go']['main']['App']['RemoveRecentItem'](arg1);
 }
 
 export function RemoveTagFromFile(arg1, arg2) {
@@ -92,4 +108,8 @@ export function UpdateSettings(arg1) {
 
 export function UpdateTagColor(arg1, arg2) {
   return window['go']['main']['App']['UpdateTagColor'](arg1, arg2);
+}
+
+export function UpdateWorkspaceConfig(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UpdateWorkspaceConfig'](arg1, arg2, arg3);
 }

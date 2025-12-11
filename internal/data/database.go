@@ -160,6 +160,14 @@ func (d *Database) InitDB(ctx context.Context) error {
 			value TEXT NOT NULL,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);`,
+		`CREATE TABLE IF NOT EXISTS recent_items (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL CHECK(type IN ('workspace', 'folder')),
+			path TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			opened_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_recent_items_opened_at ON recent_items(opened_at DESC);`,
 	}
 
 	for _, stmt := range statements {
@@ -377,6 +385,26 @@ func (d *Database) RemoveTagFromFile(ctx context.Context, fileID, tagID int64) e
 	)
 	if err != nil {
 		return fmt.Errorf("从文件移除标签失败: %w", err)
+	}
+	return nil
+}
+
+// ClearAllTagsFromFile 清除文件的所有标签
+func (d *Database) ClearAllTagsFromFile(ctx context.Context, fileID int64) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if fileID <= 0 {
+		return errors.New("无效的文件 ID")
+	}
+
+	_, err := d.conn.ExecContext(
+		ctx,
+		`DELETE FROM file_tags WHERE file_id = ?`,
+		fileID,
+	)
+	if err != nil {
+		return fmt.Errorf("清除文件所有标签失败: %w", err)
 	}
 	return nil
 }
@@ -1007,6 +1035,94 @@ func (d *Database) SetSetting(ctx context.Context, key, value string) error {
 	`, key, value)
 	if err != nil {
 		return fmt.Errorf("保存设置失败: %w", err)
+	}
+
+	return nil
+}
+
+
+// RecentItem 表示最近打开的项目
+type RecentItem struct {
+	ID       int64     `json:"id"`
+	Type     string    `json:"type"` // "workspace" 或 "folder"
+	Path     string    `json:"path"`
+	Name     string    `json:"name"`
+	OpenedAt time.Time `json:"opened_at"`
+}
+
+// AddRecentItem 添加或更新最近打开的项目
+func (d *Database) AddRecentItem(ctx context.Context, itemType, path, name string) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if itemType != "workspace" && itemType != "folder" {
+		return errors.New("无效的项目类型")
+	}
+	if path == "" {
+		return errors.New("路径不能为空")
+	}
+	if name == "" {
+		name = filepath.Base(path)
+	}
+
+	_, err := d.conn.ExecContext(ctx, `
+		INSERT INTO recent_items(type, path, name, opened_at) VALUES(?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(path) DO UPDATE SET type = excluded.type, name = excluded.name, opened_at = CURRENT_TIMESTAMP
+	`, itemType, path, name)
+	if err != nil {
+		return fmt.Errorf("添加最近项目失败: %w", err)
+	}
+
+	return nil
+}
+
+// GetRecentItems 获取最近打开的项目列表
+func (d *Database) GetRecentItems(ctx context.Context, limit int) ([]RecentItem, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+
+	rows, err := d.conn.QueryContext(ctx, `
+		SELECT id, type, path, name, opened_at 
+		FROM recent_items 
+		ORDER BY opened_at DESC 
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("查询最近项目失败: %w", err)
+	}
+	defer rows.Close()
+
+	var items []RecentItem
+	for rows.Next() {
+		var item RecentItem
+		if err := rows.Scan(&item.ID, &item.Type, &item.Path, &item.Name, &item.OpenedAt); err != nil {
+			return nil, fmt.Errorf("读取最近项目记录失败: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历最近项目记录失败: %w", err)
+	}
+
+	return items, nil
+}
+
+// RemoveRecentItem 移除最近打开的项目
+func (d *Database) RemoveRecentItem(ctx context.Context, path string) error {
+	if d == nil || d.conn == nil {
+		return errors.New("数据库对象尚未初始化")
+	}
+	if path == "" {
+		return errors.New("路径不能为空")
+	}
+
+	_, err := d.conn.ExecContext(ctx, `DELETE FROM recent_items WHERE path = ?`, path)
+	if err != nil {
+		return fmt.Errorf("移除最近项目失败: %w", err)
 	}
 
 	return nil

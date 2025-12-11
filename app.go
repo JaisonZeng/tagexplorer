@@ -434,6 +434,8 @@ type WorkspaceConfig struct {
 	Folders   []string  `json:"folders"`
 	CreatedAt time.Time `json:"created_at"`
 	Version   string    `json:"version"`
+	// FilePath 是工作区配置文件的路径（仅在加载时填充，不保存到文件）
+	FilePath  string    `json:"file_path,omitempty"`
 }
 
 // SaveWorkspaceConfig 保存工作区配置到文件
@@ -501,6 +503,62 @@ func (a *App) SaveWorkspaceConfig(name string, folders []string) (string, error)
 	return selectedPath, nil
 }
 
+// UpdateWorkspaceConfig 更新已有的工作区配置文件（不弹出对话框）
+func (a *App) UpdateWorkspaceConfig(filePath string, name string, folders []string) error {
+	if a.ctx == nil {
+		return errors.New("应用尚未完成初始化")
+	}
+	if filePath == "" {
+		return errors.New("文件路径不能为空")
+	}
+	if name == "" {
+		return errors.New("工作区名称不能为空")
+	}
+	if len(folders) == 0 {
+		return errors.New("工作区必须包含至少一个文件夹")
+	}
+
+	// 读取现有配置以保留 CreatedAt
+	var existingConfig WorkspaceConfig
+	if data, err := os.ReadFile(filePath); err == nil {
+		_ = json.Unmarshal(data, &existingConfig)
+	}
+
+	createdAt := existingConfig.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+
+	// 创建配置对象
+	config := WorkspaceConfig{
+		Name:      name,
+		Folders:   folders,
+		CreatedAt: createdAt,
+		Version:   "1.0",
+	}
+
+	// 序列化为 JSON
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %w", err)
+	}
+
+	// 写入文件
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("保存配置文件失败: %w", err)
+	}
+
+	if a.logger != nil {
+		a.logger.Info("更新工作区配置成功", 
+			zap.String("name", name),
+			zap.String("path", filePath),
+			zap.Strings("folders", folders),
+		)
+	}
+
+	return nil
+}
+
 // LoadWorkspaceConfig 加载工作区配置文件
 func (a *App) LoadWorkspaceConfig() (*WorkspaceConfig, error) {
 	if a.ctx == nil {
@@ -562,6 +620,16 @@ func (a *App) LoadWorkspaceConfig() (*WorkspaceConfig, error) {
 
 	config.Folders = validFolders
 
+	// 设置文件路径
+	config.FilePath = selectedPath
+
+	// 记录到最近打开列表
+	if err := a.db.AddRecentItem(a.ctx, "workspace", selectedPath, config.Name); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("记录最近打开项目失败", zap.String("path", selectedPath), zap.Error(err))
+		}
+	}
+
 	if a.logger != nil {
 		a.logger.Info("加载工作区配置成功", 
 			zap.String("name", config.Name),
@@ -571,6 +639,117 @@ func (a *App) LoadWorkspaceConfig() (*WorkspaceConfig, error) {
 	}
 
 	return &config, nil
+}
+
+// RecentItem 最近打开的项目（用于前端）
+type RecentItem struct {
+	ID       int64  `json:"id"`
+	Type     string `json:"type"`
+	Path     string `json:"path"`
+	Name     string `json:"name"`
+	OpenedAt string `json:"opened_at"`
+}
+
+// GetRecentItems 获取最近打开的项目列表
+func (a *App) GetRecentItems() ([]RecentItem, error) {
+	if a.db == nil {
+		return nil, errors.New("数据库尚未准备就绪")
+	}
+
+	items, err := a.db.GetRecentItems(a.ctx, 5)
+	if err != nil {
+		if a.logger != nil {
+			a.logger.Error("获取最近项目失败", zap.Error(err))
+		}
+		return nil, err
+	}
+
+	// 过滤掉不存在的路径
+	var validItems []RecentItem
+	for _, item := range items {
+		if _, err := os.Stat(item.Path); err == nil {
+			validItems = append(validItems, RecentItem{
+				ID:       item.ID,
+				Type:     item.Type,
+				Path:     item.Path,
+				Name:     item.Name,
+				OpenedAt: item.OpenedAt.Format("2006-01-02 15:04"),
+			})
+		} else {
+			// 路径不存在，从数据库中移除
+			_ = a.db.RemoveRecentItem(a.ctx, item.Path)
+		}
+	}
+
+	return validItems, nil
+}
+
+// OpenRecentItem 打开最近的项目
+func (a *App) OpenRecentItem(path string, itemType string) (*api.ScanResult, error) {
+	if a.ctx == nil {
+		return nil, errors.New("应用尚未完成初始化")
+	}
+
+	if itemType == "workspace" {
+		// 读取工作区配置文件
+		fileData, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("读取配置文件失败: %w", err)
+		}
+
+		var config WorkspaceConfig
+		if err := json.Unmarshal(fileData, &config); err != nil {
+			return nil, fmt.Errorf("解析配置文件失败: %w", err)
+		}
+
+		// 验证文件夹是否存在
+		var validFolders []string
+		for _, folder := range config.Folders {
+			if _, err := os.Stat(folder); err == nil {
+				validFolders = append(validFolders, folder)
+			}
+		}
+
+		if len(validFolders) == 0 {
+			return nil, errors.New("配置文件中的所有文件夹都不存在")
+		}
+
+		// 更新最近打开记录
+		if err := a.db.AddRecentItem(a.ctx, "workspace", path, config.Name); err != nil {
+			if a.logger != nil {
+				a.logger.Warn("更新最近打开项目失败", zap.String("path", path), zap.Error(err))
+			}
+		}
+
+		// 扫描第一个有效文件夹
+		return a.scanFolder(validFolders[0])
+	}
+
+	// 文件夹类型，直接扫描
+	result, err := a.scanFolder(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// 更新最近打开记录
+	absPath, _ := filepath.Abs(path)
+	wsName := filepath.Base(absPath)
+	if err := a.db.AddRecentItem(a.ctx, "folder", absPath, wsName); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("更新最近打开项目失败", zap.String("path", path), zap.Error(err))
+		}
+	}
+
+	return result, nil
+}
+
+// RemoveRecentItem 从最近列表中移除项目
+func (a *App) RemoveRecentItem(path string) error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+
+	return a.db.RemoveRecentItem(a.ctx, path)
 }
 
 // ShowStartupDialog 显示启动选择对话框
@@ -609,7 +788,7 @@ func (a *App) ScanWorkspaceFolder(folderPath string) (*api.ScanResult, error) {
 	return a.scanFolder(folderPath)
 }
 
-// scanFolder 内部方法：扫描文件夹
+// scanFolder 内部方法：扫描文件夹（不记录到最近列表）
 func (a *App) scanFolder(selectedPath string) (*api.ScanResult, error) {
 	absPath, err := filepath.Abs(selectedPath)
 	if err != nil {
@@ -683,7 +862,21 @@ func (a *App) SelectWorkspace() (*api.ScanResult, error) {
 		return nil, nil
 	}
 
-	return a.scanFolder(selectedPath)
+	result, err := a.scanFolder(selectedPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// 用户直接选择文件夹时，记录到最近打开列表
+	absPath, _ := filepath.Abs(selectedPath)
+	wsName := filepath.Base(absPath)
+	if err := a.db.AddRecentItem(a.ctx, "folder", absPath, wsName); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("记录最近打开项目失败", zap.String("path", absPath), zap.Error(err))
+		}
+	}
+
+	return result, nil
 }
 
 // GetFiles 分页返回当前工作区文件列表
@@ -805,6 +998,33 @@ func (a *App) RemoveTagFromFile(fileID, tagID int64) error {
 			a.logger.Warn("移除标签后重命名文件失败", zap.Int64("file_id", fileID), zap.Error(err))
 		}
 		// 重命名失败不影响标签移除的成功
+	}
+	
+	return nil
+}
+
+// ClearAllTagsFromFile 清除文件的所有标签并重命名文件
+func (a *App) ClearAllTagsFromFile(fileID int64) error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+	if err := a.db.ClearAllTagsFromFile(a.ctx, fileID); err != nil {
+		if a.logger != nil {
+			a.logger.Error("清除文件所有标签失败", zap.Int64("file_id", fileID), zap.Error(err))
+		}
+		return err
+	}
+	
+	// 清除标签后重命名文件（移除文件名中的标签部分）
+	if err := a.RenameFileWithTags(fileID); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("清除标签后重命名文件失败", zap.Int64("file_id", fileID), zap.Error(err))
+		}
+		// 重命名失败不影响标签清除的成功
+	}
+	
+	if a.logger != nil {
+		a.logger.Info("已清除文件所有标签", zap.Int64("file_id", fileID))
 	}
 	
 	return nil

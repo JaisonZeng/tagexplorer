@@ -263,12 +263,33 @@ export namespace api {
 
 export namespace main {
 	
+	export class RecentItem {
+	    id: number;
+	    type: string;
+	    path: string;
+	    name: string;
+	    opened_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RecentItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.path = source["path"];
+	        this.name = source["name"];
+	        this.opened_at = source["opened_at"];
+	    }
+	}
 	export class WorkspaceConfig {
 	    name: string;
 	    folders: string[];
 	    // Go type: time
 	    created_at: any;
 	    version: string;
+	    file_path?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceConfig(source);
@@ -280,6 +301,7 @@ export namespace main {
 	        this.folders = source["folders"];
 	        this.created_at = this.convertValues(source["created_at"], null);
 	        this.version = source["version"];
+	        this.file_path = source["file_path"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

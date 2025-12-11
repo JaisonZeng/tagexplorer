@@ -1,7 +1,8 @@
 {
-  "name": "测试",
+  "name": "测试文件夹",
   "folders": [
-    "E:\\测试文件夹"
+    "E:\\测试文件夹",
+    "C:\\Users\\Jaison\\Downloads\\favicon_logosc"
   ],
   "created_at": "2025-12-11T01:26:50.2568379Z",
   "version": "1.0"

@@ -20,8 +20,9 @@ import {useTagStore} from "../store/tags";
 import {fileEntriesToChonky, getOriginalEntry, ExtendedFileData} from "../utils/chonkyAdapter";
 import {applyChonkyI18n} from "../utils/chonkyI18n";
 import type {FileEntry, TagInfo} from "../types/files";
-import {ChevronRight, Folder, Home, X, Filter, SearchX, Pencil} from "lucide-react";
+import {ChevronRight, Folder, Home, X, Filter, SearchX} from "lucide-react";
 import {RenameFile} from "../../wailsjs/go/main/App";
+import ConfirmDialog from "./ConfirmDialog";
 
 // 应用中文本地化
 applyChonkyI18n();
@@ -60,6 +61,18 @@ const RenameFileAction = defineFileAction({
     icon: ChonkyIconName.terminal,
   },
   hotkeys: ["F2"],
+});
+
+// 自定义 Action: 取消标签
+const ClearTagsAction = defineFileAction({
+  id: "clear_tags",
+  requiresSelection: true,
+  button: {
+    name: "取消标签",
+    toolbar: false,
+    contextMenu: true,
+    icon: ChonkyIconName.trash,
+  },
 });
 
 interface FileBrowserProps {
@@ -265,6 +278,9 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
   // 重命名状态
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<FileEntry | null>(null);
+  // 取消标签确认对话框状态
+  const [clearTagsConfirmOpen, setClearTagsConfirmOpen] = useState(false);
+  const [clearTagsTargetIds, setClearTagsTargetIds] = useState<number[]>([]);
 
   const {files, workspace, isTagSearchMode, searchByTags, clearTagSearch, updateFileNameLocal} = useWorkspaceStore(
     useShallow((state) => ({
@@ -329,11 +345,12 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
     }))
   );
 
-  const {tags, addTagToFiles, removeTagFromFiles} = useTagStore(
+  const {tags, addTagToFiles, removeTagFromFiles, clearAllTagsFromFiles} = useTagStore(
     useShallow((state) => ({
       tags: state.tags,
       addTagToFiles: state.addTagToFiles,
       removeTagFromFiles: state.removeTagFromFiles,
+      clearAllTagsFromFiles: state.clearAllTagsFromFiles,
     }))
   );
 
@@ -364,6 +381,7 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
       TagFileAction,
       PreviewFileAction,
       RenameFileAction,
+      ClearTagsAction,
     ],
     []
   );
@@ -425,9 +443,35 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
             setRenameDialogOpen(true);
           }
         }
+      } else if (id === "clear_tags") {
+        const selectedFiles = state?.selectedFilesForAction;
+        if (selectedFiles && selectedFiles.length > 0) {
+          const ids = selectedFiles
+            .map((f: FileData) => getOriginalEntry(f)?.id)
+            .filter((fid: number | undefined): fid is number => fid !== undefined);
+          
+          // 过滤出有标签的文件
+          const filesWithTags = ids.filter((fileId: number) => {
+            const file = files.find((f) => f.id === fileId);
+            return file && file.tags && file.tags.length > 0;
+          });
+          
+          if (filesWithTags.length === 0) {
+            return; // 没有需要清除标签的文件
+          }
+          
+          // 多选时需要确认
+          if (filesWithTags.length > 1) {
+            setClearTagsTargetIds(filesWithTags);
+            setClearTagsConfirmOpen(true);
+          } else {
+            // 单选直接执行
+            void clearAllTagsFromFiles(filesWithTags);
+          }
+        }
       }
     },
-    [openPreview]
+    [openPreview, files, clearAllTagsFromFiles]
   );
 
   // 无限滚动检测
@@ -497,6 +541,14 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
       alert("重命名失败: " + (error instanceof Error ? error.message : String(error)));
     }
   }, [renameTarget, updateFileNameLocal]);
+
+  // 处理取消标签确认
+  const handleClearTagsConfirm = useCallback(async () => {
+    if (clearTagsTargetIds.length === 0) return;
+    await clearAllTagsFromFiles(clearTagsTargetIds);
+    setClearTagsConfirmOpen(false);
+    setClearTagsTargetIds([]);
+  }, [clearTagsTargetIds, clearAllTagsFromFiles]);
 
   const FileBrowserComponent = ChonkyFileBrowser as any;
 
@@ -681,6 +733,21 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
           setRenameTarget(null);
         }}
         onConfirm={handleRenameConfirm}
+      />
+
+      {/* 取消标签确认对话框 */}
+      <ConfirmDialog
+        isOpen={clearTagsConfirmOpen}
+        title="取消标签"
+        message={`确定要取消 ${clearTagsTargetIds.length} 个文件的所有标签吗？此操作将移除这些文件的全部标签。`}
+        confirmText="确定取消"
+        cancelText="返回"
+        type="warning"
+        onConfirm={handleClearTagsConfirm}
+        onCancel={() => {
+          setClearTagsConfirmOpen(false);
+          setClearTagsTargetIds([]);
+        }}
       />
 
       {/* 选中文件的标签信息面板 - 固定高度 */}

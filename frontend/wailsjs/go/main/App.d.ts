@@ -7,11 +7,15 @@ export function AddTagToFile(arg1:number,arg2:number):Promise<void>;
 
 export function AddWorkspaceFolder():Promise<api.ScanResult>;
 
+export function ClearAllTagsFromFile(arg1:number):Promise<void>;
+
 export function CreateTag(arg1:string,arg2:string,arg3:any):Promise<api.Tag>;
 
 export function DeleteTag(arg1:number):Promise<void>;
 
 export function GetFiles(arg1:number,arg2:number):Promise<api.FilePage>;
+
+export function GetRecentItems():Promise<Array<main.RecentItem>>;
 
 export function GetSettings():Promise<api.AppSettings>;
 
@@ -24,6 +28,10 @@ export function Greet(arg1:string):Promise<string>;
 export function ListTags():Promise<Array<api.Tag>>;
 
 export function LoadWorkspaceConfig():Promise<main.WorkspaceConfig>;
+
+export function OpenRecentItem(arg1:string,arg2:string):Promise<api.ScanResult>;
+
+export function RemoveRecentItem(arg1:string):Promise<void>;
 
 export function RemoveTagFromFile(arg1:number,arg2:number):Promise<void>;
 
@@ -48,3 +56,5 @@ export function ShowStartupDialog():Promise<string>;
 export function UpdateSettings(arg1:api.AppSettings):Promise<void>;
 
 export function UpdateTagColor(arg1:number,arg2:string):Promise<void>;
+
+export function UpdateWorkspaceConfig(arg1:string,arg2:string,arg3:Array<string>):Promise<void>;

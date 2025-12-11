@@ -1,6 +1,7 @@
 import {create} from "zustand";
 import {
   AddTagToFile,
+  ClearAllTagsFromFile,
   CreateTag,
   DeleteTag,
   ListTags,
@@ -22,6 +23,7 @@ interface TagState {
   updateTagColor: (tagId: number, color: string) => Promise<void>;
   addTagToFiles: (tagId: number, fileIds: number[]) => Promise<void>;
   removeTagFromFiles: (tagId: number, fileIds: number[]) => Promise<void>;
+  clearAllTagsFromFiles: (fileIds: number[]) => Promise<void>;
 }
 
 const normalizeTag = (payload: any): TagInfo => ({
@@ -141,6 +143,22 @@ export const useTagStore = create<TagState>((set, get) => ({
     try {
       const uniqueIds = Array.from(new Set(fileIds));
       await Promise.all(uniqueIds.map((fileID) => RemoveTagFromFile(fileID, tagId)));
+      
+      // 由于后端会重命名文件，需要刷新文件列表以获取最新的文件名
+      await useWorkspaceStore.getState().fetchNextPage(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      set({error: message});
+    }
+  },
+
+  clearAllTagsFromFiles: async (fileIds) => {
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      return;
+    }
+    try {
+      const uniqueIds = Array.from(new Set(fileIds));
+      await Promise.all(uniqueIds.map((fileID) => ClearAllTagsFromFile(fileID)));
       
       // 由于后端会重命名文件，需要刷新文件列表以获取最新的文件名
       await useWorkspaceStore.getState().fetchNextPage(true);
