@@ -37,6 +37,8 @@ export function SaveWorkspaceConfig(arg1:string,arg2:Array<string>):Promise<stri
 
 export function ScanWorkspaceFolder(arg1:string):Promise<api.ScanResult>;
 
+export function SearchFilesByTags(arg1:api.FileSearchParams):Promise<api.FilePage>;
+
 export function SelectWorkspace():Promise<api.ScanResult>;
 
 export function SetActiveWorkspace(arg1:number):Promise<void>;

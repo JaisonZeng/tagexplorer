@@ -70,6 +70,10 @@ export function ScanWorkspaceFolder(arg1) {
   return window['go']['main']['App']['ScanWorkspaceFolder'](arg1);
 }
 
+export function SearchFilesByTags(arg1) {
+  return window['go']['main']['App']['SearchFilesByTags'](arg1);
+}
+
 export function SelectWorkspace() {
   return window['go']['main']['App']['SelectWorkspace']();
 }

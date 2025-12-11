@@ -1,7 +1,6 @@
 import {FormEvent, useEffect, useState, useRef} from "react";
 import {useShallow} from "zustand/react/shallow";
 import {useTagStore} from "../store/tags";
-import {useWorkspaceStore} from "../store/workspace";
 import {
   Tags,
   Plus,
@@ -9,9 +8,6 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  FolderOpen,
-  File,
-  Folder,
   Palette,
   Check,
   X,
@@ -299,12 +295,7 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
     })),
   );
 
-  const {workspace, stats} = useWorkspaceStore(
-    useShallow((state) => ({
-      workspace: state.workspace,
-      stats: state.stats,
-    })),
-  );
+
 
   const [name, setName] = useState("");
   const [color, setColor] = useState(DEFAULT_COLOR);
@@ -421,31 +412,6 @@ const TagSidebar = ({collapsed, onToggle}: TagSidebarProps) => {
           </button>
         </div>
       </div>
-
-      {workspace && (
-        <div className="border-b border-slate-200 p-4 dark:border-slate-800">
-          <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-            <FolderOpen size={14} />
-            <span className="truncate">{workspace.name}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-lg bg-slate-100 p-2 text-center dark:bg-slate-800">
-              <div className="flex items-center justify-center gap-1 text-lg font-bold text-slate-900 dark:text-white">
-                <File size={14} className="text-slate-400" />
-                {stats?.fileCount ?? 0}
-              </div>
-              <p className="text-xs text-slate-500">文件</p>
-            </div>
-            <div className="rounded-lg bg-slate-100 p-2 text-center dark:bg-slate-800">
-              <div className="flex items-center justify-center gap-1 text-lg font-bold text-slate-900 dark:text-white">
-                <Folder size={14} className="text-slate-400" />
-                {stats?.directoryCount ?? 0}
-              </div>
-              <p className="text-xs text-slate-500">文件夹</p>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="flex-1 overflow-y-auto p-3">
         {/* 新建标签表单 */}

@@ -63,3 +63,12 @@ type CustomFormat struct {
 type AppSettings struct {
 	TagRule TagRuleConfig `json:"tagRule"`
 }
+
+// FileSearchParams 文件搜索参数
+type FileSearchParams struct {
+	TagIDs       []int64 `json:"tag_ids"`        // 要筛选的标签ID列表
+	FolderPath   string  `json:"folder_path"`    // 文件夹路径（相对路径），为空则搜索整个工作区
+	IncludeSubfolders bool `json:"include_subfolders"` // 是否包含子文件夹
+	Limit        int     `json:"limit"`
+	Offset       int     `json:"offset"`
+}

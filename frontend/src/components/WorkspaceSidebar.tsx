@@ -11,6 +11,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 
 const WorkspaceSidebar = () => {
@@ -100,32 +101,36 @@ const WorkspaceSidebar = () => {
         </div>
       </div>
 
-      {/* 保存配置对话框 */}
+      {/* 保存配置表单 */}
       {showSaveDialog && (
-        <div className="border-b border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
-          <p className="mb-2 text-xs text-slate-500">保存当前工作区配置</p>
-          <div className="flex gap-2">
+        <div className="border-b border-slate-200 p-2 dark:border-slate-800">
+          <div className="flex items-center gap-1.5">
             <input
               type="text"
               value={configName}
               onChange={(e) => setConfigName(e.target.value)}
               placeholder="配置名称"
-              className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-700"
+              className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               onKeyDown={(e) => e.key === "Enter" && handleSaveConfig()}
               autoFocus
             />
             <button
               onClick={handleSaveConfig}
               disabled={!configName.trim() || saving}
-              className="rounded bg-brand px-2 py-1 text-xs text-white hover:bg-brand-dark disabled:opacity-50"
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded bg-brand text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
+              title="保存配置 (Enter)"
             >
-              {saving ? "保存中..." : "保存"}
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
             </button>
             <button
-              onClick={() => setShowSaveDialog(false)}
-              className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+              onClick={() => {
+                setShowSaveDialog(false);
+                setConfigName("");
+              }}
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700"
+              title="取消"
             >
-              取消
+              <X size={12} />
             </button>
           </div>
         </div>

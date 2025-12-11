@@ -9,5 +9,14 @@
   "author": {
     "name": "Jaison",
     "email": "jaison.zeng@foxmail.com"
-  }
+  },
+  "info": {
+    "companyName": "Jaison",
+    "productName": "TagExplorer",
+    "productVersion": "1.0.0"
+  },
+  "width": 1024,
+  "height": 768,
+  "minWidth": 800,
+  "minHeight": 600
 }

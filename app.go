@@ -91,6 +91,13 @@ func (a *App) startup(ctx context.Context) {
 			Grouping:  "combined",
 		},
 	}
+	
+	// 从数据库加载设置
+	if err := a.loadSettingsFromDB(); err != nil {
+		if a.logger != nil {
+			a.logger.Warn("从数据库加载设置失败，使用默认设置", zap.Error(err))
+		}
+	}
 }
 
 // shutdown 释放资源
@@ -153,6 +160,14 @@ func (a *App) UpdateSettings(settings *api.AppSettings) error {
 	}
 	
 	a.settings = settings
+	
+	// 保存设置到数据库
+	if err := a.saveSettingsToDB(); err != nil {
+		if a.logger != nil {
+			a.logger.Error("保存设置到数据库失败", zap.Error(err))
+		}
+		// 不返回错误，设置已经在内存中更新
+	}
 	
 	if a.logger != nil {
 		a.logger.Info("更新应用设置", 
@@ -1645,5 +1660,109 @@ func (a *App) processFileNameTags(ctx context.Context, workspaceID int64) error 
 		a.logger.Info("完成文件名标签处理", zap.Int64("workspace_id", workspaceID))
 	}
 	
+	return nil
+}
+
+// SearchFilesByTags 根据标签搜索文件
+func (a *App) SearchFilesByTags(params api.FileSearchParams) (*api.FilePage, error) {
+	if a.ctx == nil {
+		return nil, errors.New("应用尚未初始化")
+	}
+	if a.db == nil {
+		return nil, errors.New("数据库尚未准备就绪")
+	}
+	if a.currentWorkspace == nil {
+		return nil, errors.New("尚未选择工作区")
+	}
+	if len(params.TagIDs) == 0 {
+		return nil, errors.New("至少需要选择一个标签")
+	}
+
+	if a.logger != nil {
+		a.logger.Info("按标签搜索文件",
+			zap.Int64("workspace_id", a.currentWorkspace.ID),
+			zap.Int64s("tag_ids", params.TagIDs),
+			zap.String("folder_path", params.FolderPath),
+			zap.Bool("include_subfolders", params.IncludeSubfolders),
+		)
+	}
+
+	page, err := a.db.ListFilesByTags(
+		a.ctx,
+		a.currentWorkspace.ID,
+		params.TagIDs,
+		params.FolderPath,
+		params.IncludeSubfolders,
+		params.Limit,
+		params.Offset,
+	)
+	if err != nil {
+		if a.logger != nil {
+			a.logger.Error("按标签搜索文件失败",
+				zap.Int64("workspace_id", a.currentWorkspace.ID),
+				zap.Error(err),
+			)
+		}
+		return nil, err
+	}
+
+	return toAPIFilePage(page), nil
+}
+
+// loadSettingsFromDB 从数据库加载设置
+func (a *App) loadSettingsFromDB() error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+
+	settingsJSON, err := a.db.GetSetting(a.ctx, "app_settings")
+	if err != nil {
+		return fmt.Errorf("获取设置失败: %w", err)
+	}
+
+	if settingsJSON == "" {
+		// 没有保存的设置，使用默认值
+		return nil
+	}
+
+	var settings api.AppSettings
+	if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
+		return fmt.Errorf("解析设置失败: %w", err)
+	}
+
+	a.settings = &settings
+
+	if a.logger != nil {
+		a.logger.Info("从数据库加载设置成功",
+			zap.String("tag_format", settings.TagRule.Format),
+			zap.String("tag_position", settings.TagRule.Position),
+		)
+	}
+
+	return nil
+}
+
+// saveSettingsToDB 保存设置到数据库
+func (a *App) saveSettingsToDB() error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+	if a.settings == nil {
+		return errors.New("设置尚未初始化")
+	}
+
+	settingsJSON, err := json.Marshal(a.settings)
+	if err != nil {
+		return fmt.Errorf("序列化设置失败: %w", err)
+	}
+
+	if err := a.db.SetSetting(a.ctx, "app_settings", string(settingsJSON)); err != nil {
+		return fmt.Errorf("保存设置失败: %w", err)
+	}
+
+	if a.logger != nil {
+		a.logger.Info("设置已保存到数据库")
+	}
+
 	return nil
 }

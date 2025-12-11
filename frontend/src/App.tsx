@@ -133,25 +133,11 @@ function App() {
 
           {hasWorkspace ? (
             <div className="relative flex-1 overflow-hidden">
-              {files.length === 0 && !loading ? (
-                <div className="flex h-full flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-slate-300 text-sm text-slate-500 dark:border-slate-700 m-4">
-                  <p>当前文件夹没有文件</p>
-                  <button
-                    onClick={handleAddFolder}
-                    disabled={selecting}
-                    className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
-                  >
-                    <Plus size={16} />
-                    添加文件夹
-                  </button>
-                </div>
-              ) : (
-                <FileBrowser
-                  onLoadMore={() => fetchNextPage()}
-                  hasMore={hasMore}
-                  loading={loading}
-                />
-              )}
+              <FileBrowser
+                onLoadMore={() => fetchNextPage()}
+                hasMore={hasMore}
+                loading={loading}
+              />
             </div>
           ) : (
             <div className="flex flex-1 items-center justify-center">

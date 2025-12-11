@@ -184,6 +184,26 @@ export namespace api {
 		}
 	}
 	
+	export class FileSearchParams {
+	    tag_ids: number[];
+	    folder_path: string;
+	    include_subfolders: boolean;
+	    limit: number;
+	    offset: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileSearchParams(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tag_ids = source["tag_ids"];
+	        this.folder_path = source["folder_path"];
+	        this.include_subfolders = source["include_subfolders"];
+	        this.limit = source["limit"];
+	        this.offset = source["offset"];
+	    }
+	}
 	export class Workspace {
 	    id: number;
 	    path: string;

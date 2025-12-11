@@ -10,6 +10,7 @@ import {
   SaveWorkspaceConfig,
   LoadWorkspaceConfig,
   ShowStartupDialog,
+  SearchFilesByTags,
 } from "../../wailsjs/go/main/App";
 import type {FileEntry, TagInfo, WorkspaceInfo, WorkspaceStats} from "../types/files";
 
@@ -27,6 +28,13 @@ export interface WorkspaceConfig {
   folders: string[];
   created_at: string;
   version: string;
+}
+
+// 标签搜索参数
+export interface TagSearchParams {
+  tagIds: number[];
+  folderPath: string;
+  includeSubfolders: boolean;
 }
 
 interface WorkspaceState {
@@ -47,6 +55,9 @@ interface WorkspaceState {
   error?: string;
   selectedFileIds: number[];
   lastSelectedIndex: number | null;
+  // 标签搜索状态
+  tagSearchParams: TagSearchParams | null;
+  isTagSearchMode: boolean;
   
   // Actions
   selectWorkspace: () => Promise<void>;
@@ -64,6 +75,9 @@ interface WorkspaceState {
   loadWorkspaceFromFile: () => Promise<void>;
   showStartupDialog: () => Promise<string>;
   refreshFolders: () => Promise<void>;
+  // 标签搜索
+  searchByTags: (params: TagSearchParams) => Promise<void>;
+  clearTagSearch: () => void;
 }
 
 const normalizeWorkspace = (payload: any): WorkspaceInfo => ({
@@ -113,6 +127,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       error: undefined,
       selectedFileIds: [],
       lastSelectedIndex: null,
+      tagSearchParams: null,
+      isTagSearchMode: false,
 
       // 兼容旧的选择工作区方法（选择单个文件夹）
       selectWorkspace: async () => {
@@ -183,44 +199,44 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
           const folder = normalizeFolder(result.workspace);
 
-          set((state) => {
-            const exists = state.folders.some((f) => f.path === folder.path);
-            if (exists) {
-              // 如果文件夹已存在，不改变当前活动文件夹
-              return state;
-            }
-            
-            // 如果是第一个文件夹，自动激活它
-            if (state.folders.length === 0) {
-              const stats: WorkspaceStats = {
-                fileCount: Number(result.file_count ?? 0),
-                directoryCount: Number(result.directory_count ?? 0),
-              };
-              
-              return {
-                folders: [folder],
-                activeFolderId: folder.id,
-                workspace: normalizeWorkspace(result.workspace),
-                stats,
-                files: [],
-                total: 0,
-                offset: 0,
-                hasMore: true,
-                selectedFileIds: [],
-                lastSelectedIndex: null,
-              };
-            }
-            
-            // 如果已有文件夹，只添加到列表，不切换活动文件夹
-            return {
-              folders: [...state.folders, folder],
+          const currentState = get();
+          const exists = currentState.folders.some((f) => f.path === folder.path);
+          
+          if (exists) {
+            // 如果文件夹已存在，不做任何操作
+            return;
+          }
+          
+          // 如果是第一个文件夹，自动激活它
+          const isFirstFolder = currentState.folders.length === 0;
+          
+          if (isFirstFolder) {
+            const stats: WorkspaceStats = {
+              fileCount: Number(result.file_count ?? 0),
+              directoryCount: Number(result.directory_count ?? 0),
             };
-          });
-
-          // 只有在添加第一个文件夹时才获取文件
-          const {folders, activeFolderId} = get();
-          if (folders.length === 1 && activeFolderId === folder.id) {
+            
+            set({
+              folders: [folder],
+              activeFolderId: folder.id,
+              workspace: normalizeWorkspace(result.workspace),
+              stats,
+              files: [],
+              total: 0,
+              offset: 0,
+              hasMore: true,
+              selectedFileIds: [],
+              lastSelectedIndex: null,
+            });
+            
+            // 通知后端设置活动工作区，然后获取文件
+            await SetActiveWorkspace(folder.id);
             await get().fetchNextPage(true);
+          } else {
+            // 如果已有文件夹，只添加到列表，不切换活动文件夹
+            set((state) => ({
+              folders: [...state.folders, folder],
+            }));
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -477,23 +493,24 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
       // 从文件加载工作区配置
       loadWorkspaceFromFile: async () => {
-        set({
-          folders: [],
-          activeFolderId: null,
-          workspace: undefined,
-          stats: undefined,
-          files: [],
-          loading: true,
-          error: undefined,
-        });
-
         try {
+          // 先获取配置，不清空当前状态
           const config = await LoadWorkspaceConfig();
           if (!config) {
-            // 用户取消了选择
-            set({loading: false});
+            // 用户取消了选择，保持当前状态不变
             return;
           }
+
+          // 用户确认选择后，才清空旧状态并开始加载
+          set({
+            folders: [],
+            activeFolderId: null,
+            workspace: undefined,
+            stats: undefined,
+            files: [],
+            loading: true,
+            error: undefined,
+          });
 
           for (const folderPath of config.folders) {
             const result = await ScanWorkspaceFolder(folderPath);
@@ -507,13 +524,15 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
           const {folders} = get();
           if (folders.length > 0) {
+            // 先设置 loading 为 false，否则 setActiveFolder 内部的 fetchNextPage 会因为 loading 为 true 而跳过
+            set({loading: false});
             await get().setActiveFolder(folders[0].id);
+          } else {
+            set({loading: false});
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          set({error: message});
-        } finally {
-          set({loading: false});
+          set({error: message, loading: false});
         }
       },
 
@@ -527,5 +546,71 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
           set({error: message});
           throw error;
         }
+      },
+
+      // 按标签搜索文件
+      searchByTags: async (params: TagSearchParams) => {
+        const state = get();
+        if (!state.workspace && !state.activeFolderId) {
+          return;
+        }
+        if (state.loading) {
+          return;
+        }
+        if (params.tagIds.length === 0) {
+          // 如果没有选择标签，清除搜索模式
+          get().clearTagSearch();
+          return;
+        }
+
+        set({
+          loading: true,
+          error: undefined,
+          tagSearchParams: params,
+          isTagSearchMode: true,
+        });
+
+        try {
+          const response = await SearchFilesByTags({
+            tag_ids: params.tagIds,
+            folder_path: params.folderPath,
+            include_subfolders: params.includeSubfolders,
+            limit: state.pageSize,
+            offset: 0,
+          });
+          const total = Number(response?.total ?? 0);
+          const normalized = Array.isArray(response?.records)
+            ? response.records.map(normalizeFileRecord)
+            : [];
+          set({
+            files: normalized,
+            total,
+            offset: normalized.length,
+            hasMore: normalized.length < total,
+            selectedFileIds: [],
+            lastSelectedIndex: null,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          set({error: message});
+        } finally {
+          set({loading: false});
+        }
+      },
+
+      // 清除标签搜索
+      clearTagSearch: () => {
+        set({
+          tagSearchParams: null,
+          isTagSearchMode: false,
+          files: [],
+          total: 0,
+          offset: 0,
+          hasMore: true,
+          selectedFileIds: [],
+          lastSelectedIndex: null,
+        });
+        // 重新加载普通文件列表
+        get().fetchNextPage(true);
       },
     }));

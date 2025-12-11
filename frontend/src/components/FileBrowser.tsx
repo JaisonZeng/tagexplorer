@@ -20,7 +20,7 @@ import {useTagStore} from "../store/tags";
 import {fileEntriesToChonky, getOriginalEntry, ExtendedFileData} from "../utils/chonkyAdapter";
 import {applyChonkyI18n} from "../utils/chonkyI18n";
 import type {FileEntry, TagInfo} from "../types/files";
-import {ChevronRight, Folder, Home} from "lucide-react";
+import {ChevronRight, Folder, Home, X, Filter, SearchX} from "lucide-react";
 
 // 应用中文本地化
 applyChonkyI18n();
@@ -172,16 +172,28 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
   const [menuPosition, setMenuPosition] = useState({x: 0, y: 0});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [currentPath, setCurrentPath] = useState<string>("");
+  // 标签筛选状态
+  const [filterTagIds, setFilterTagIds] = useState<number[]>([]);
+  const [includeSubfolders, setIncludeSubfolders] = useState(true);
+  const [showTagFilter, setShowTagFilter] = useState(false);
 
-  const {files, workspace} = useWorkspaceStore(
+  const {files, workspace, isTagSearchMode, searchByTags, clearTagSearch} = useWorkspaceStore(
     useShallow((state) => ({
       files: state.files,
       workspace: state.workspace,
+      isTagSearchMode: state.isTagSearchMode,
+      searchByTags: state.searchByTags,
+      clearTagSearch: state.clearTagSearch,
     }))
   );
 
   // 构建文件树结构
   const {currentFiles, breadcrumbs} = useMemo(() => {
+    // 在标签搜索模式下，直接显示所有搜索结果
+    if (isTagSearchMode) {
+      return {currentFiles: files, breadcrumbs: []};
+    }
+
     const normalizedCurrentPath = currentPath.replace(/\\/g, "/");
     
     // 过滤出当前路径下的直接子项
@@ -211,7 +223,7 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
     }));
 
     return {currentFiles: filtered, breadcrumbs: crumbs};
-  }, [files, currentPath]);
+  }, [files, currentPath, isTagSearchMode]);
 
   // 获取选中文件的标签信息
   const selectedFilesWithTags = useMemo(() => {
@@ -337,59 +349,201 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
   // 重置路径当工作区改变
   useEffect(() => {
     setCurrentPath("");
+    setFilterTagIds([]);
+    if (isTagSearchMode) {
+      clearTagSearch();
+    }
   }, [workspace?.id]);
+
+  // 处理标签筛选
+  const handleTagFilterToggle = useCallback((tagId: number) => {
+    setFilterTagIds((prev) => {
+      if (prev.includes(tagId)) {
+        return prev.filter((id) => id !== tagId);
+      }
+      return [...prev, tagId];
+    });
+  }, []);
+
+  // 执行标签搜索
+  const handleApplyTagFilter = useCallback(() => {
+    if (filterTagIds.length === 0) {
+      clearTagSearch();
+      return;
+    }
+    searchByTags({
+      tagIds: filterTagIds,
+      folderPath: currentPath,
+      includeSubfolders,
+    });
+  }, [filterTagIds, currentPath, includeSubfolders, searchByTags, clearTagSearch]);
+
+  // 清除标签筛选
+  const handleClearTagFilter = useCallback(() => {
+    setFilterTagIds([]);
+    clearTagSearch();
+  }, [clearTagSearch]);
 
   const FileBrowserComponent = ChonkyFileBrowser as any;
 
   return (
     <div ref={containerRef} className="flex h-full w-full flex-col overflow-hidden">
-      {/* 面包屑导航 */}
-      <div className="flex items-center gap-1 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
-        <button
-          onClick={() => setCurrentPath("")}
-          className={`flex items-center gap-1 rounded px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
-            !currentPath ? "text-brand font-medium" : "text-slate-600 dark:text-slate-400"
-          }`}
-        >
-          <Home size={14} />
-          <span>{workspace?.name || "根目录"}</span>
-        </button>
-        {breadcrumbs.map((crumb, index) => (
-          <div key={crumb.path} className="flex items-center">
-            <ChevronRight size={14} className="text-slate-400" />
+      {/* 面包屑导航和标签筛选 */}
+      <div className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center justify-between px-3 py-2">
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => setCurrentPath(crumb.path)}
+              onClick={() => setCurrentPath("")}
               className={`flex items-center gap-1 rounded px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
-                index === breadcrumbs.length - 1
-                  ? "text-brand font-medium"
-                  : "text-slate-600 dark:text-slate-400"
+                !currentPath ? "text-brand font-medium" : "text-slate-600 dark:text-slate-400"
               }`}
             >
-              <Folder size={14} />
-              <span>{crumb.name}</span>
+              <Home size={14} />
+              <span>{workspace?.name || "根目录"}</span>
             </button>
+            {breadcrumbs.map((crumb, index) => (
+              <div key={crumb.path} className="flex items-center">
+                <ChevronRight size={14} className="text-slate-400" />
+                <button
+                  onClick={() => setCurrentPath(crumb.path)}
+                  className={`flex items-center gap-1 rounded px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                    index === breadcrumbs.length - 1
+                      ? "text-brand font-medium"
+                      : "text-slate-600 dark:text-slate-400"
+                  }`}
+                >
+                  <Folder size={14} />
+                  <span>{crumb.name}</span>
+                </button>
+              </div>
+            ))}
           </div>
-        ))}
+          {/* 标签筛选按钮 */}
+          <button
+            onClick={() => setShowTagFilter(!showTagFilter)}
+            className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-sm transition ${
+              showTagFilter || isTagSearchMode
+                ? "bg-brand text-white"
+                : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+            }`}
+          >
+            <Filter size={14} />
+            <span>标签筛选</span>
+            {filterTagIds.length > 0 && (
+              <span className="ml-1 rounded-full bg-white/20 px-1.5 text-xs">
+                {filterTagIds.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* 标签筛选面板 */}
+        {showTagFilter && (
+          <div className="border-t border-slate-100 px-3 py-3 dark:border-slate-800">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                选择标签进行筛选（文件需包含所有选中的标签）
+              </span>
+              <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={includeSubfolders}
+                  onChange={(e) => setIncludeSubfolders(e.target.checked)}
+                  className="rounded border-slate-300 text-brand focus:ring-brand"
+                />
+                包含子文件夹
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {tags.length === 0 ? (
+                <span className="text-xs text-slate-400">暂无标签</span>
+              ) : (
+                tags.map((tag) => {
+                  const isSelected = filterTagIds.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      onClick={() => handleTagFilterToggle(tag.id)}
+                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                        isSelected
+                          ? "text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                      }`}
+                      style={isSelected ? {backgroundColor: tag.color} : undefined}
+                    >
+                      {!isSelected && (
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{backgroundColor: tag.color}}
+                        />
+                      )}
+                      {tag.name}
+                      {isSelected && <X size={12} />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={handleApplyTagFilter}
+                disabled={filterTagIds.length === 0}
+                className="rounded bg-brand px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                应用筛选
+              </button>
+              {isTagSearchMode && (
+                <button
+                  onClick={handleClearTagFilter}
+                  className="rounded bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  清除筛选
+                </button>
+              )}
+              {isTagSearchMode && (
+                <span className="text-xs text-slate-500">
+                  当前显示 {files.length} 个匹配文件
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 文件列表 */}
       <div className="flex-1 overflow-auto chonky-container">
-        <FileBrowserComponent
-          files={chonkyFiles}
-          fileActions={fileActions}
-          onFileAction={handleFileAction}
-          iconComponent={ChonkyIconFA}
-          disableDragAndDrop={true}
-          disableDefaultFileActions={[
-            ChonkyActions.OpenParentFolder.id,
-            ChonkyActions.ToggleHiddenFiles.id,
-          ]}
-          defaultFileViewActionId={ChonkyActions.EnableGridView.id}
-        >
-          <FileToolbar />
-          <FileList />
-          <FileContextMenu />
-        </FileBrowserComponent>
+        {/* 标签搜索无结果提示 */}
+        {isTagSearchMode && currentFiles.length === 0 && !loading && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-500">
+            <SearchX size={48} className="text-slate-300" />
+            <p className="text-sm">没有找到匹配所选标签的文件</p>
+            <button
+              onClick={handleClearTagFilter}
+              className="rounded bg-brand px-3 py-1.5 text-xs font-medium text-white transition hover:bg-brand/90"
+            >
+              清除筛选
+            </button>
+          </div>
+        )}
+        {/* Chonky 文件浏览器 - 始终渲染 */}
+        {!(isTagSearchMode && currentFiles.length === 0 && !loading) && (
+          <FileBrowserComponent
+            files={chonkyFiles}
+            fileActions={fileActions}
+            onFileAction={handleFileAction}
+            iconComponent={ChonkyIconFA}
+            disableDragAndDrop={true}
+            disableDefaultFileActions={[
+              ChonkyActions.OpenParentFolder.id,
+              ChonkyActions.ToggleHiddenFiles.id,
+            ]}
+            defaultFileViewActionId={ChonkyActions.EnableGridView.id}
+          >
+            <FileToolbar />
+            <FileList />
+            <FileContextMenu />
+          </FileBrowserComponent>
+        )}
       </div>
 
       {/* 标签管理弹出菜单 */}
@@ -404,14 +558,14 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
         />
       )}
 
-      {/* 选中文件的标签信息面板 */}
+      {/* 选中文件的标签信息面板 - 固定高度 */}
       {selectedFilesWithTags.length > 0 && (
-        <div className="border-t border-slate-200 bg-white/95 px-4 py-2 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95">
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500">
+        <div className="h-9 min-h-9 border-t border-slate-200 bg-white/95 px-4 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95">
+          <div className="flex h-full items-center gap-3">
+            <span className="shrink-0 text-xs text-slate-500">
               已选 {selectedFilesWithTags.length} 个文件的标签:
             </span>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex items-center gap-1 overflow-hidden">
               {(() => {
                 const allTags = new Map<number, TagInfo>();
                 selectedFilesWithTags.forEach((file) => {
@@ -428,7 +582,7 @@ const FileBrowser = ({onLoadMore, hasMore, loading}: FileBrowserProps) => {
                 return tagList.map((tag) => (
                   <span
                     key={tag.id}
-                    className="rounded px-2 py-0.5 text-xs font-medium text-white"
+                    className="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-white"
                     style={{backgroundColor: tag.color || "#475569"}}
                   >
                     {tag.name}

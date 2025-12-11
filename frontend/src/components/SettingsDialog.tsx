@@ -183,10 +183,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl dark:bg-slate-800">
-        {/* 标题栏 */}
-        <div className="mb-6 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl dark:bg-slate-800">
+        {/* 标题栏 - 固定 */}
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
             应用设置
           </h2>
@@ -198,7 +198,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        <div className="space-y-6">
+        {/* 内容区域 - 可滚动 */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="space-y-6">
           {/* 错误提示 */}
           {error && (
             <div className="rounded-md border border-red-500/50 bg-red-500/10 px-4 py-2 text-sm text-red-600 dark:text-red-400">
@@ -380,10 +382,11 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose }) => {
               </div>
             </div>
           </section>
+          </div>
         </div>
 
-        {/* 底部按钮 */}
-        <div className="mt-6 flex justify-between">
+        {/* 底部按钮 - 固定 */}
+        <div className="flex flex-shrink-0 justify-between border-t border-slate-200 px-6 py-4 dark:border-slate-700">
           <button
             onClick={handleReset}
             className="flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
