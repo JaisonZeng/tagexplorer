@@ -62,6 +62,10 @@ export function SelectWorkspace() {
   return window['go']['main']['App']['SelectWorkspace']();
 }
 
+export function SetActiveWorkspace(arg1) {
+  return window['go']['main']['App']['SetActiveWorkspace'](arg1);
+}
+
 export function UpdateTagColor(arg1, arg2) {
   return window['go']['main']['App']['UpdateTagColor'](arg1, arg2);
 }

@@ -179,7 +179,7 @@ const WorkspaceSidebar = () => {
                 key={folder.id}
                 folder={folder}
                 isActive={folder.id === activeFolderId}
-                onSelect={() => setActiveFolder(folder.id)}
+                onSelect={() => void setActiveFolder(folder.id)}
                 onRemove={() => removeFolder(folder.id)}
               />
             ))}
@@ -208,7 +208,7 @@ const FolderItem = ({folder, isActive, onSelect, onRemove}: FolderItemProps) => 
             ? "bg-brand/10 text-brand dark:bg-brand/20"
             : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
         }`}
-        onClick={onSelect}
+        onClick={() => void onSelect()}
       >
         <button
           onClick={(e) => {

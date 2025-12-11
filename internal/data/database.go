@@ -756,6 +756,27 @@ func (d *Database) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 	return workspaces, nil
 }
 
+// GetWorkspaceByID 根据ID获取工作区信息
+func (d *Database) GetWorkspaceByID(ctx context.Context, workspaceID int64) (*Workspace, error) {
+	if d == nil || d.conn == nil {
+		return nil, errors.New("数据库对象尚未初始化")
+	}
+	if workspaceID <= 0 {
+		return nil, errors.New("无效的工作区 ID")
+	}
+
+	row := d.conn.QueryRowContext(ctx, `SELECT id, path, name, created_at FROM workspaces WHERE id = ?`, workspaceID)
+	var ws Workspace
+	if err := row.Scan(&ws.ID, &ws.Path, &ws.Name, &ws.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("工作区不存在")
+		}
+		return nil, fmt.Errorf("查询工作区失败: %w", err)
+	}
+
+	return &ws, nil
+}
+
 // BatchAddTagsToFile 批量为文件添加标签（根据标签名称）
 func (d *Database) BatchAddTagsToFile(ctx context.Context, fileID int64, tagNames []string) error {
 	if d == nil || d.conn == nil {

@@ -7,6 +7,7 @@ import {
   RemoveWorkspaceFolder,
   GetWorkspaceFolders,
   ScanWorkspaceFolder,
+  SetActiveWorkspace,
 } from "../../wailsjs/go/main/App";
 import type {FileEntry, TagInfo, WorkspaceInfo, WorkspaceStats} from "../types/files";
 
@@ -50,7 +51,7 @@ interface WorkspaceState {
   selectWorkspace: () => Promise<void>;
   addFolder: () => Promise<void>;
   removeFolder: (folderId: number) => Promise<void>;
-  setActiveFolder: (folderId: number | null) => void;
+  setActiveFolder: (folderId: number | null) => Promise<void>;
   fetchNextPage: (reset?: boolean) => Promise<void>;
   selectFile: (fileID: number, index: number, options: {append: boolean; range: boolean}) => void;
   clearSelection: () => void;
@@ -183,35 +184,46 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
 
           const folder = normalizeFolder(result.workspace);
-          const stats: WorkspaceStats = {
-            fileCount: Number(result.file_count ?? 0),
-            directoryCount: Number(result.directory_count ?? 0),
-          };
 
           set((state) => {
             const exists = state.folders.some((f) => f.path === folder.path);
             if (exists) {
+              // 如果文件夹已存在，不改变当前活动文件夹
+              return state;
+            }
+            
+            // 如果是第一个文件夹，自动激活它
+            if (state.folders.length === 0) {
+              const stats: WorkspaceStats = {
+                fileCount: Number(result.file_count ?? 0),
+                directoryCount: Number(result.directory_count ?? 0),
+              };
+              
               return {
+                folders: [folder],
                 activeFolderId: folder.id,
                 workspace: normalizeWorkspace(result.workspace),
                 stats,
+                files: [],
+                total: 0,
+                offset: 0,
+                hasMore: true,
+                selectedFileIds: [],
+                lastSelectedIndex: null,
               };
             }
+            
+            // 如果已有文件夹，只添加到列表，不切换活动文件夹
             return {
               folders: [...state.folders, folder],
-              activeFolderId: folder.id,
-              workspace: normalizeWorkspace(result.workspace),
-              stats,
-              files: [],
-              total: 0,
-              offset: 0,
-              hasMore: true,
-              selectedFileIds: [],
-              lastSelectedIndex: null,
             };
           });
 
-          await get().fetchNextPage(true);
+          // 只有在添加第一个文件夹时才获取文件
+          const {folders, activeFolderId} = get();
+          if (folders.length === 1 && activeFolderId === folder.id) {
+            await get().fetchNextPage(true);
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           set({error: message});
@@ -256,7 +268,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       // 设置活动文件夹
-      setActiveFolder: (folderId: number | null) => {
+      setActiveFolder: async (folderId: number | null) => {
         const {folders} = get();
         const folder = folders.find((f) => f.id === folderId);
         
@@ -274,7 +286,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         });
 
         if (folderId) {
-          void get().fetchNextPage(true);
+          try {
+            // 通知后端切换活动工作区
+            await SetActiveWorkspace(folderId);
+            // 获取新工作区的文件
+            await get().fetchNextPage(true);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            set({error: message});
+          }
         }
       },
 
@@ -483,7 +503,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
           const {folders} = get();
           if (folders.length > 0) {
-            get().setActiveFolder(folders[0].id);
+            await get().setActiveFolder(folders[0].id);
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);

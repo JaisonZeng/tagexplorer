@@ -32,4 +32,6 @@ export function ScanWorkspaceFolder(arg1:string):Promise<api.ScanResult>;
 
 export function SelectWorkspace():Promise<api.ScanResult>;
 
+export function SetActiveWorkspace(arg1:number):Promise<void>;
+
 export function UpdateTagColor(arg1:number,arg2:string):Promise<void>;

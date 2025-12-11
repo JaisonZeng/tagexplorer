@@ -165,6 +165,30 @@ func (a *App) GetWorkspaceFolders() ([]api.Workspace, error) {
 	return result, nil
 }
 
+// SetActiveWorkspace 设置当前活动的工作区
+func (a *App) SetActiveWorkspace(workspaceID int64) error {
+	if a.db == nil {
+		return errors.New("数据库尚未准备就绪")
+	}
+	
+	// 获取工作区信息
+	workspace, err := a.db.GetWorkspaceByID(a.ctx, workspaceID)
+	if err != nil {
+		return fmt.Errorf("获取工作区信息失败: %w", err)
+	}
+	
+	a.currentWorkspace = workspace
+	
+	if a.logger != nil {
+		a.logger.Info("切换活动工作区", 
+			zap.Int64("workspace_id", workspaceID),
+			zap.String("workspace_path", workspace.Path),
+		)
+	}
+	
+	return nil
+}
+
 // ScanWorkspaceFolder 扫描指定路径的文件夹
 func (a *App) ScanWorkspaceFolder(folderPath string) (*api.ScanResult, error) {
 	if folderPath == "" {
